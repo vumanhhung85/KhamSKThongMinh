@@ -335,9 +335,22 @@ function saveSettings(model, gasUrl) {
 }
 
 
-// Tách 1 file PDF (có thể nhiều trang) thành từng ẢNH riêng (1 ảnh/trang) rồi mới gửi cho
-// Gemini — đáng tin cậy hơn nhiều so với gửi thẳng nguyên file PDF nhiều trang (Gemini có lúc
-// chỉ đọc được 1 trang khi nhận cả file PDF gộp). Trả về mảng [{base64, mimeType, blobUrl}].
+// Chuyển NGUYÊN file PDF gốc (không qua ảnh) thành base64 — dùng để gửi thẳng cho Gemini đọc.
+// Nhẹ và nhanh hơn nhiều so với tách thành ảnh JPEG từng trang (phần tách ảnh giờ chỉ dùng
+// riêng cho khung xem/zoom bên dưới, không ảnh hưởng gì tới tốc độ đọc dữ liệu nữa).
+function fileToBase64(file) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () { resolve(reader.result.split(',')[1]); };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Tách 1 file PDF (có thể nhiều trang) thành từng ẢNH riêng (1 ảnh/trang) — CHỈ dùng để hiển
+// thị trong khung xem/zoom lúc duyệt phiếu, KHÔNG dùng để gửi Gemini nữa (gửi thẳng PDF gốc ở
+// hàm fileToBase64 phía trên, nhanh và nhẹ hơn nhiều). Nếu bước này lỗi (vd pdf.js tải không
+// được), chỉ mất khung xem trước, KHÔNG ảnh hưởng việc đọc dữ liệu.
 function pdfFileToPageImages(file) {
   if (typeof pdfjsLib === 'undefined') {
     return Promise.reject(new Error('Chưa tải được thư viện đọc PDF (pdf.js) — kiểm tra lại kết nối mạng rồi tải lại trang.'));
@@ -546,22 +559,28 @@ function handleFiles(fileList) {
     STATE.patients.push(patient);
     renderTable();
 
-    // Tách TỪNG FILE trong nhóm thành ảnh từng trang, rồi nối các trang lại theo đúng thứ tự
-    // file (đã sắp theo "Trang N" ở groupFilesByPatient) — 1 nhóm có thể vừa gồm nhiều file
-    // "Trang N.pdf" (mỗi file 1 trang) VỪA có file nhiều trang gộp sẵn, đều xử lý được như nhau.
-    var chain = group.files.reduce(function (p, file) {
+    // (1) Ảnh xem trước cho khung zoom/pan — chạy ĐỘC LẬP, không làm chậm hay ảnh hưởng việc
+    // đọc dữ liệu bên dưới nếu bước này lỗi (ví dụ pdf.js không tải được).
+    group.files.reduce(function (p, file) {
       return p.then(function (acc) {
         return pdfFileToPageImages(file).then(function (imgs) { return acc.concat(imgs); });
       });
-    }, Promise.resolve([])).catch(function (err) {
-      throw new Error('[Tách PDF] ' + (err.message || err));
+    }, Promise.resolve([])).then(function (imgs) {
+      patient.pages = imgs;
+      if (STATE.patients.indexOf(patient) !== -1) renderTable();
+    }).catch(function (err) {
+      console.warn('Không tạo được ảnh xem trước (không ảnh hưởng việc đọc dữ liệu):', err.message);
     });
 
-    chain.then(function (allPages) {
-      patient.pages = allPages;
-      if (!allPages.length) throw new Error('[Tách PDF] Không tách được trang nào từ file PDF này.');
-      renderTable(); // cập nhật ngay để anh thấy số trang đã tách xong trong lúc chờ Gemini
-      return callGemini(allPages, STATE.model).then(function (json) {
+    // (2) Đọc dữ liệu thật: gửi NGUYÊN file PDF gốc cho Gemini qua GAS — nhanh và nhẹ hơn
+    // nhiều so với tách ảnh, và nếu nhóm có nhiều file (kiểu "Trang N.pdf" tách riêng), gửi
+    // MỖI FILE là 1 phần PDF riêng trong cùng 1 lần gọi — Gemini vẫn hiểu là cùng 1 phiếu.
+    Promise.all(group.files.map(function (file) {
+      return fileToBase64(file).then(function (b64) { return { base64: b64, mimeType: 'application/pdf' }; });
+    })).catch(function (err) {
+      throw new Error('[Đọc file] ' + (err.message || err));
+    }).then(function (rawParts) {
+      return callGemini(rawParts, STATE.model).then(function (json) {
         patient.canXacNhan = json._can_xac_nhan || [];
         patient.icdAiDeXuat = json._icd_ai_de_xuat || [];
         delete json._can_xac_nhan;
@@ -652,11 +671,14 @@ function renderSimpleField(f, data, warnSet) {
   var html = '<div class="field' + (isWarn ? ' warn' : '') + '">';
   html += '<label>' + escapeHtml(f.label) + (f.optional ? '' : ' *') + '</label>';
   if (f.type === 'select') {
+    var curValS = fieldValue(f, data);
+    var isEmptyS = (curValS === '' || curValS === undefined || curValS === null);
     html += '<select data-code="' + f.code + '">';
+    if (isEmptyS) html += '<option value="" selected>-- chọn --</option>';
     f.options.forEach(function (opt) {
       var v = (typeof opt === 'object') ? opt.v : opt;
       var t = (typeof opt === 'object') ? opt.t : opt;
-      var sel = String(fieldValue(f, data)) === String(v) ? ' selected' : '';
+      var sel = !isEmptyS && String(curValS) === String(v) ? ' selected' : '';
       html += '<option value="' + escapeHtml(v) + '"' + sel + '>' + escapeHtml(t) + '</option>';
     });
     html += '</select>';
@@ -863,8 +885,17 @@ function initResizeHandle() {
 
 function renderPdfPager(p, activeIndex) {
   var pager = document.getElementById('pdfPager');
-  document.getElementById('pdfFrame').src = p.pages[activeIndex].blobUrl;
+  var frame = document.getElementById('pdfFrame');
   resetZoom();
+  if (!p.pages || !p.pages.length) {
+    // Anh xem truoc chua xong (hoac loi) — khong anh huong du lieu da doc, chi tam chua co anh de xem.
+    frame.src = '';
+    frame.alt = 'Đang tạo ảnh xem trước...';
+    pager.innerHTML = '';
+    pager.style.display = 'none';
+    return;
+  }
+  frame.src = p.pages[activeIndex].blobUrl;
   if (p.pages.length <= 1) { pager.innerHTML = ''; pager.style.display = 'none'; return; }
   pager.style.display = 'flex';
   pager.innerHTML = p.pages.map(function (pg, i) {
@@ -965,10 +996,32 @@ function bindModalEvents(p) {
   document.getElementById('btnCloseModal').addEventListener('click', closeModal);
   document.getElementById('btnCloseModal2').addEventListener('click', closeModal);
   document.getElementById('btnApprove').addEventListener('click', function () {
+    var missing = validateRequiredFields(p.data);
+    if (missing.length) {
+      alert('Chưa thể duyệt phiếu này vì còn thiếu trường bắt buộc (*):\n\n- ' + missing.join('\n- ') +
+        '\n\nDuyệt khi còn thiếu sẽ khiến lúc xuất Excel lên hệ thống bị báo lỗi. Vui lòng điền đầy đủ rồi duyệt lại.');
+      return;
+    }
     p.status = 'approved';
     closeModal();
     renderTable();
   });
+}
+
+// Các trường bắt buộc (*) cần điền đủ trước khi cho phép Duyệt — tránh tình trạng duyệt xong,
+// xuất Excel lên hệ thống thật mới báo lỗi thiếu dữ liệu.
+var REQUIRED_FIELD_SECTIONS = [HANH_CHINH_FIELDS, THE_LUC_FIELDS, KET_LUAN_FIELDS];
+
+function validateRequiredFields(data) {
+  var missing = [];
+  REQUIRED_FIELD_SECTIONS.forEach(function (fields) {
+    fields.forEach(function (f) {
+      if (f.optional) return;
+      var v = data[f.code];
+      if (v === undefined || v === null || v === '') missing.push(f.label);
+    });
+  });
+  return missing;
 }
 
 function onCityChanged(p) {
@@ -1134,7 +1187,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildPrompt: buildPrompt, parseGeminiText: parseGeminiText,
     SPECIALTIES: SPECIALTIES, TIEN_SU_BAN_THAN_FIELDS: TIEN_SU_BAN_THAN_FIELDS,
     HANH_CHINH_FIELDS: HANH_CHINH_FIELDS, buildExportRecord: buildExportRecord,
-    TIEN_SU_GIA_DINH_OPTIONS: TIEN_SU_GIA_DINH_OPTIONS, groupFilesByPatient: groupFilesByPatient
+    TIEN_SU_GIA_DINH_OPTIONS: TIEN_SU_GIA_DINH_OPTIONS, groupFilesByPatient: groupFilesByPatient,
+    validateRequiredFields: validateRequiredFields
   };
 }
 </script>
