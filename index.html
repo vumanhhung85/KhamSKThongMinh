@@ -528,11 +528,13 @@ function handleFiles(fileList) {
       return p.then(function (acc) {
         return pdfFileToPageImages(file).then(function (imgs) { return acc.concat(imgs); });
       });
-    }, Promise.resolve([]));
+    }, Promise.resolve([])).catch(function (err) {
+      throw new Error('[Tách PDF] ' + (err.message || err));
+    });
 
     chain.then(function (allPages) {
       patient.pages = allPages;
-      if (!allPages.length) throw new Error('Không tách được trang nào từ file PDF này.');
+      if (!allPages.length) throw new Error('[Tách PDF] Không tách được trang nào từ file PDF này.');
       renderTable(); // cập nhật ngay để anh thấy số trang đã tách xong trong lúc chờ Gemini
       return callGemini(allPages, STATE.model).then(function (json) {
         patient.canXacNhan = json._can_xac_nhan || [];
@@ -542,6 +544,8 @@ function handleFiles(fileList) {
         patient.data = applyBusinessRules(json);
         patient.status = 'pending';
         renderTable();
+      }).catch(function (err) {
+        throw new Error(err.message && err.message.indexOf('[') === 0 ? err.message : '[Gọi Gemini] ' + (err.message || err));
       });
     }).catch(function (err) {
       patient.status = 'error';
@@ -559,7 +563,7 @@ function statusBadge(p) {
   if (p.status === 'processing') return '<span class="badge badge-processing">Đang đọc...</span>';
   if (p.status === 'pending') return '<span class="badge badge-pending">Chờ duyệt</span>';
   if (p.status === 'approved') return '<span class="badge badge-approved">Đã duyệt</span>';
-  return '<span class="badge badge-error" title="' + escapeHtml(p.errorMsg) + '">Lỗi</span>';
+  return '<span class="badge badge-error">Lỗi</span>';
 }
 
 function escapeHtml(s) {
@@ -583,7 +587,9 @@ function renderTable() {
       '<td>' + escapeHtml(p.data.ho_ten || p.fileName) + '</td>' +
       '<td>' + escapeHtml(p.data.ngay_sinh || '') + '</td>' +
       '<td>' + escapeHtml(p.data.dinh_danh_ca_nhan || '') + '</td>' +
-      '<td>' + statusBadge(p) + (p.canXacNhan && p.canXacNhan.length ? ' <span class="tag-ai" title="Có trường cần xem lại">⚠ ' + p.canXacNhan.length + '</span>' : '') + '</td>' +
+      '<td>' + statusBadge(p) + (p.canXacNhan && p.canXacNhan.length ? ' <span class="tag-ai" title="Có trường cần xem lại">⚠ ' + p.canXacNhan.length + '</span>' : '') +
+        (p.status === 'error' ? '<div style="color:#a50e0e;font-size:12px;margin-top:5px;max-width:320px;white-space:pre-wrap;word-break:break-word;">' + escapeHtml(p.errorMsg) + '</div>' : '') +
+      '</td>' +
       '<td>' +
         (canEdit ? '<button class="btn btn-sm btn-secondary" data-action="view" data-id="' + p.id + '">Xem/Sửa</button> ' : '') +
         '<button class="btn btn-sm btn-danger" data-action="remove" data-id="' + p.id + '">Xoá</button>' +
@@ -941,7 +947,19 @@ function gasRequest(action, body) {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // tránh preflight CORS
     body: JSON.stringify(payload)
-  }).then(function (res) { return res.json(); });
+  }).then(function (res) {
+    return res.text().then(function (text) {
+      var json;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        throw new Error('GAS trả về dữ liệu không phải JSON (HTTP ' + res.status + ') — thường do CHƯA DEPLOY LẠI bản Code.gs mới nhất (Manage deployments > bút chì > Version: New > Deploy), hoặc quyền truy cập Web App chưa để "Anyone". Nội dung nhận được: ' + text.slice(0, 200));
+      }
+      return json;
+    });
+  }, function (networkErr) {
+    throw new Error('Không gọi được GAS Web App (lỗi mạng/CORS) — kiểm tra lại URL trong Cài đặt còn đúng không. Chi tiết: ' + networkErr.message);
+  });
 }
 
 function loadRefData() {
