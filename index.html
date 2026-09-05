@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR Phiếu khám sức khỏe (Mẫu 03)</title>
+<style>
+  :root{
+    --brand:#1a73e8; --brand-dark:#0b57cf; --bg:#f4f6f8; --card:#ffffff;
+    --border:#d8dee5; --warn:#fff4e0; --warn-border:#e8a33d; --ai:#e8f0fe; --ai-border:#7baaf7;
+    --ok:#e6f4ea; --ok-border:#34a853; --err:#fce8e6; --err-border:#d93025; --text:#202124;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0;padding-bottom:60px;}
+  header{background:var(--brand);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{font-size:18px;margin:0;font-weight:600;}
+  header button{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;}
+  header button:hover{background:rgba(255,255,255,0.28);}
+  main{max-width:1100px;margin:0 auto;padding:16px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
+  .dropzone{border:2px dashed var(--border);border-radius:10px;padding:32px;text-align:center;color:#5f6368;cursor:pointer;transition:.15s;}
+  .dropzone.drag{border-color:var(--brand);background:#f0f6ff;}
+  .dropzone input{display:none;}
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle;}
+  th{background:#f8f9fa;font-weight:600;color:#5f6368;font-size:12px;text-transform:uppercase;}
+  tr.status-approved{background:var(--ok);}
+  tr.status-error{background:var(--err);}
+  .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;}
+  .badge-processing{background:#e8eaed;color:#5f6368;}
+  .badge-pending{background:var(--warn);color:#92610a;border:1px solid var(--warn-border);}
+  .badge-approved{background:var(--ok);color:#1e7e34;border:1px solid var(--ok-border);}
+  .badge-error{background:var(--err);color:#a50e0e;border:1px solid var(--err-border);}
+  .btn{background:var(--brand);color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;}
+  .btn:hover{background:var(--brand-dark);}
+  .btn:disabled{background:#c4c9ce;cursor:not-allowed;}
+  .btn-sm{padding:4px 10px;font-size:12px;border-radius:5px;}
+  .btn-secondary{background:#fff;color:var(--brand);border:1px solid var(--brand);}
+  .btn-danger{background:#fff;color:#d93025;border:1px solid #d93025;}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+  .field{margin-bottom:10px;}
+  .field label{display:block;font-size:12px;color:#5f6368;margin-bottom:3px;font-weight:600;}
+  .field input,.field select,.field textarea{width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:5px;font-size:14px;font-family:inherit;}
+  .field.warn input,.field.warn select{background:var(--warn);border-color:var(--warn-border);}
+  .field-hint{font-size:11px;color:#92610a;margin-top:2px;}
+  .tag-ai{display:inline-block;background:var(--ai);border:1px solid var(--ai-border);color:#174ea6;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:6px;}
+  .section-title{font-size:14px;font-weight:700;margin:18px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--brand);color:var(--brand-dark);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 14px;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:stretch;justify-content:center;z-index:100;}
+  .modal-overlay.show{display:flex;}
+  .modal-box{background:#fff;width:100%;max-width:1200px;margin:16px;border-radius:10px;display:flex;overflow:hidden;max-height:calc(100vh - 32px);}
+  .modal-pdf{flex:0 0 42%;background:#333;}
+  .modal-pdf iframe{width:100%;height:100%;border:none;}
+  .modal-form{flex:1;overflow-y:auto;padding:18px;}
+  .modal-form-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .modal-form-header h2{font-size:16px;margin:0;}
+  .clinical-table{width:100%;font-size:13px;border-collapse:collapse;margin-top:6px;}
+  .clinical-table th,.clinical-table td{border:1px solid var(--border);padding:5px 6px;}
+  .clinical-table input,.clinical-table select{width:100%;border:none;padding:3px;font-size:13px;}
+  .clinical-table select{background:transparent;}
+  .clinical-table td.warn-cell{background:var(--warn);}
+  .close-x{cursor:pointer;font-size:22px;color:#5f6368;border:none;background:none;line-height:1;}
+  .empty-hint{color:#5f6368;text-align:center;padding:30px;font-size:14px;}
+  .footer-actions{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);padding:10px 20px;display:flex;justify-content:flex-end;gap:10px;align-items:center;box-shadow:0 -2px 6px rgba(0,0,0,.05);}
+  .small-note{font-size:12px;color:#5f6368;}
+  .settings-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .settings-row .field{flex:1;min-width:220px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🩺 OCR Phiếu khám sức khỏe — Mẫu 03</h1>
+  <button id="btnToggleSettings">⚙ Cài đặt</button>
+</header>
+
+<main>
+
+  <div class="card" id="settingsPanel" style="display:none;">
+    <div class="settings-row">
+      <div class="field">
+        <label>Gemini API key (aistudio.google.com)</label>
+        <input type="password" id="cfgGeminiKey" placeholder="AIza...">
+      </div>
+      <div class="field">
+        <label>Model Gemini</label>
+        <input type="text" id="cfgModel" placeholder="gemini-3.1-flash-lite">
+        <div class="field-hint">Đổi ở đây nếu Google ngừng model cũ — không cần sửa code.</div>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="field">
+        <label>GAS Web App URL (để xuất Excel)</label>
+        <input type="text" id="cfgGasUrl" placeholder="https://script.google.com/macros/s/xxx/exec">
+      </div>
+    </div>
+    <button class="btn" id="btnSaveSettings">Lưu cài đặt</button>
+    <span class="small-note" id="settingsSavedMsg" style="margin-left:10px;"></span>
+  </div>
+
+  <div class="card">
+    <div class="dropzone" id="dropzone">
+      <div id="dropzoneText">📄 Kéo-thả nhiều file PDF vào đây, hoặc bấm để chọn (mỗi bệnh nhân 1 file)</div>
+      <input type="file" id="fileInput" accept="application/pdf" multiple>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <strong>Danh sách phiếu (<span id="countTotal">0</span>) — đã duyệt: <span id="countApproved">0</span></strong>
+    </div>
+    <table id="patientTable">
+      <thead>
+        <tr><th>#</th><th>Họ tên</th><th>Ngày sinh</th><th>CCCD</th><th>Trạng thái</th><th></th></tr>
+      </thead>
+      <tbody id="patientTbody"></tbody>
+    </table>
+    <div class="empty-hint" id="emptyHint">Chưa có phiếu nào. Tải PDF lên ở trên để bắt đầu.</div>
+  </div>
+
+</main>
+
+<div class="footer-actions">
+  <span class="small-note" id="exportHint">Xuất khi đã duyệt ít nhất 1 phiếu.</span>
+  <button class="btn" id="btnExport" disabled>⬇ Xuất Excel (0 phiếu đã duyệt)</button>
+</div>
+
+<div class="modal-overlay" id="detailModal">
+  <div class="modal-box">
+    <div class="modal-pdf"><iframe id="pdfFrame"></iframe></div>
+    <div class="modal-form" id="modalFormContainer"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ============================================================
+// 1) CẤU HÌNH TRƯỜNG DỮ LIỆU (khớp với COLUMN_MAP trong Code.gs)
+// ============================================================
+
+var HANH_CHINH_FIELDS = [
+  {code:'ngay_kham', label:'Ngày khám', type:'text', hint:'dd/MM/yyyy'},
+  {code:'doi_tuong_kham', label:'Đối tượng khám', type:'select-doituong', hint:'Bắt buộc chọn tay nếu phiếu không ghi rõ — danh mục không có mục "Khác"'},
+  {code:'dia_diem_kham', label:'Địa điểm khám', type:'select', options:['Cơ Sở Khám Chữa Bệnh','Khám Lưu Động','Trạm Y Tế','KSK Tại Nhà','Trường Học']},
+  {code:'dinh_danh_ca_nhan', label:'Số CCCD/Định danh', type:'text'},
+  {code:'ho_ten', label:'Họ và tên', type:'text'},
+  {code:'ngay_sinh', label:'Ngày sinh', type:'text', hint:'dd/MM/yyyy'},
+  {code:'gioi_tinh', label:'Giới tính', type:'select', options:[{v:1,t:'Nam'},{v:2,t:'Nữ'},{v:3,t:'Chưa xác định'}]},
+  {code:'dan_toc_id', label:'Dân tộc', type:'select-dynamic', source:'danToc'},
+  {code:'nhom_mau_id', label:'Nhóm máu', type:'select', options:['','A','B','O','AB'], optional:true},
+  {code:'yeu_to_nhom_mau_id', label:'Yếu tố Rh', type:'select', options:[{v:'',t:''},{v:1,t:'Rh-'},{v:2,t:'Rh+'}], optional:true},
+  {code:'the_bhyt', label:'Số thẻ BHYT', type:'text', optional:true},
+  {code:'sdt', label:'Số điện thoại', type:'text'},
+  {code:'dia_chi_hien_tai', label:'Chỗ ở hiện tại', type:'text'},
+  {code:'city_id', label:'Tỉnh/Thành phố', type:'select-dynamic', source:'tinh'},
+  {code:'ward_id', label:'Phường/Xã', type:'select-ward'},
+  {code:'nghenghiep_code', label:'Nghề nghiệp', type:'select-dynamic', source:'ngheNghiep'},
+  {code:'noi_cong_tac', label:'Nơi làm việc/công tác', type:'text', optional:true},
+  {code:'ly_do_kham', label:'Lý do khám sức khỏe', type:'text', optional:true},
+  {code:'hinh_thuc_chi_tra_khamsk', label:'Hình thức chi trả', type:'select-dynamic', source:'hinhThucChiTra'},
+  {code:'hinh_thuc_chi_tra_khamsk_chi_tiet', label:'Hình thức khám (nếu NSNN hỗ trợ)', type:'select-dynamic', source:'hinhThucKham', optional:true},
+  {code:'nguonkhac_ghiro', label:'Ghi rõ nguồn khác', type:'text', optional:true}
+];
+
+// Tiền sử bệnh gia đình: 9 mục riêng biệt theo đúng sheet "Bệnh Tiền Sử Gia Đình"
+// (đối chiếu với giao diện hệ thống nhập tay — không phải 1 câu Có/Không + ghi chú tự do).
+// Lưu trong p.data.giadinh_benh_ids (mảng số) — quy đổi ra 2 cột Y/Z lúc buildExportRecord().
+var TIEN_SU_GIA_DINH_OPTIONS = [
+  {id: 1051, label: 'Truyền nhiễm'}, {id: 1052, label: 'Tim mạch'}, {id: 1053, label: 'Đái tháo đường'},
+  {id: 1054, label: 'Lao'}, {id: 1055, label: 'Hen phế quản'}, {id: 1056, label: 'Ung thư'},
+  {id: 1057, label: 'Động kinh'}, {id: 1058, label: 'Rối loạn tâm thần'}, {id: 1059, label: 'Bệnh khác'}
+];
+
+// 21 mục tiền sử bản thân: value 1 = CÓ bệnh/tật, 0 = KHÔNG (lưu ý ngược chiều với "chưa phát hiện bất thường")
+var TIEN_SU_BAN_THAN_FIELDS = [
+  {code:'benh_5nam', label:'Có bệnh/bị thương trong 5 năm qua'},
+  {code:'benh_than_kinh', label:'Bệnh thần kinh/bị thương ở đầu'},
+  {code:'benh_mat', label:'Bệnh mắt/giảm thị lực'},
+  {code:'benh_tai', label:'Bệnh tai/giảm thính lực, thăng bằng'},
+  {code:'benh_tim', label:'Bệnh tim/nhồi máu cơ tim'},
+  {code:'pt_tim_mach', label:'Phẫu thuật can thiệp tim mạch'},
+  {code:'tang_ha', label:'Tăng huyết áp'},
+  {code:'kho_tho', label:'Khó thở'},
+  {code:'benh_phoi', label:'Bệnh phổi/hen/viêm phế quản mạn'},
+  {code:'benh_than', label:'Bệnh thận/lọc máu'},
+  {code:'nghien_ruou_bia', label:'Nghiện rượu, bia'},
+  {code:'dai_thao_duong', label:'Đái tháo đường/tăng đường huyết'},
+  {code:'benh_tam_than', label:'Bệnh tâm thần'},
+  {code:'mat_y_thuc', label:'Mất ý thức/rối loạn ý thức'},
+  {code:'ngat_chong_mat', label:'Ngất, chóng mặt'},
+  {code:'benh_tieu_hoa', label:'Bệnh tiêu hóa'},
+  {code:'roi_loan_giac_ngu', label:'Rối loạn giấc ngủ/ngừng thở khi ngủ'},
+  {code:'tai_bien_mach_mau_nao', label:'Tai biến mạch máu não/liệt'},
+  {code:'cot_song', label:'Bệnh/tổn thương cột sống'},
+  {code:'su_dung_ruou_bia', label:'Dùng rượu bia thường xuyên'},
+  {code:'su_dung_ma_tuy', label:'Dùng ma túy/chất gây nghiện'}
+];
+
+var CAU_HOI_KHAC_FIELDS = [
+  {code:'dieu_tri_benh_co_khong', label:'Đang điều trị bệnh gì không', type:'bool01_yesno'},
+  {code:'dieu_tri_benh_liet_ke', label:'Liệt kê thuốc/liều dùng (nếu có)', type:'text', optional:true},
+  {code:'thai_san_co_khong', label:'Tiền sử thai sản (đối với nữ)', type:'bool01_yesno'},
+  {code:'thai_san_liet_ke', label:'Liệt kê thuốc/liều dùng (nếu có)', type:'text', optional:true}
+];
+
+var THE_LUC_FIELDS = [
+  {code:'chieucao', label:'Chiều cao (cm)', type:'number'},
+  {code:'cannang', label:'Cân nặng (kg)', type:'number'},
+  {code:'nhiptho', label:'Nhịp thở (lần/phút)', type:'number'},
+  {code:'mach', label:'Mạch (lần/phút)', type:'number'},
+  {code:'huyetaptamthu', label:'Huyết áp tâm thu', type:'number'},
+  {code:'huyetaptamtruong', label:'Huyết áp tâm trương', type:'number'},
+  {code:'phanloai', label:'Phân loại thể lực chung', type:'select', options:[1,2,3,4,5]}
+];
+
+// Khám lâm sàng theo chuyên khoa — field key khớp CHÍNH XÁC với COLUMN_MAP trong Code.gs
+// (kể cả lỗi chính tả gốc "thankinh_chuandoansobo_icd" trong file mẫu, giữ nguyên để không lệch cột)
+var SPECIALTIES = [
+  {label:'Tuần hoàn', ck:'noikhoa_chuaphathienbatthuong', sobo:'noikhoa_chandoansobo_icd', xacdinh:'noikhoa_chandoanxacdinh_icd', phanloai:'noikhoa_phanloai'},
+  {label:'Hô hấp', ck:'hohap_chuaphathienbatthuong', sobo:'hohap_chandoansobo_icd', xacdinh:'hohap_chandoanxacdinh_icd', phanloai:'hohap_phanloai'},
+  {label:'Tiêu hóa', ck:'tieuhoa_chuaphathienbatthuong', sobo:'tieuhoa_chandoansobo_icd', xacdinh:'tieuhoa_chandoanxacdinh_icd', phanloai:'tieuhoa_phanloai'},
+  {label:'Thận - Tiết niệu', ck:'thantietnieu_chuaphathienbatthuong', sobo:'thantietnieu_chandoansobo_icd', xacdinh:'thantietnieu_chandoanxacdinh_icd', phanloai:'thantietnieu_phanloai'},
+  {label:'Nội tiết', ck:'noitiet_chuaphathienbatthuong', sobo:'noitiet_chandoansobo_icd', xacdinh:'noitiet_chandoanxacdinh_icd', phanloai:'noitiet_phanloai'},
+  {label:'Cơ - Xương - Khớp', ck:'coxuongkhop_chuaphathienbatthuong', sobo:'coxuongkhop_chandoansobo_icd', xacdinh:'coxuongkhop_chandoanxacdinh_icd', phanloai:'coxuongkhop_phanloai'},
+  {label:'Thần kinh', ck:'thankinh_chuaphathienbatthuong', sobo:'thankinh_chuandoansobo_icd', xacdinh:'thankinh_chandoanxacdinh_icd', phanloai:'thankinh_phanloai'},
+  {label:'Tâm thần', ck:'tamthan_chuaphathienbatthuong', sobo:'tamthan_chandoansobo_icd', xacdinh:'tamthan_chandoanxacdinh_icd', phanloai:'tamthan_phanloai'},
+  {label:'Ngoại khoa', ck:'ngoaikhoa_chuaphathienbatthuong', sobo:'ngoaikhoa_chandoansobo_icd', xacdinh:'ngoaikhoa_chandoanxacdinh_icd', phanloai:'ngoaikhoa_phanloai'},
+  {label:'Da liễu', ck:'dalieu_chuaphathienbatthuong', sobo:'dalieu_chandoansobo_icd', xacdinh:'dalieu_chandoanxacdinh_icd', phanloai:'dalieu_phanloai'},
+  {label:'Sản khoa', tuchoi:'sankhoa_tuchoikham', ck:'sankhoa_chuaphathienbatthuong', sobo:'sankhoa_chandoansobo_icd', xacdinh:'sankhoa_chandoanxacdinh_icd', phanloai:'sankhoa_phanloai'},
+  {label:'Phụ khoa', tuchoi:'phukhoa_tuchoikham', ck:'phukhoa_chuaphathienbatthuong', sobo:'phukhoa_chandoansobo_icd', xacdinh:'phukhoa_chandoanxacdinh_icd', phanloai:'phukhoa_phanloai'},
+  {label:'Mắt', ck:'mat_chuaphathienbatthuong', sobo:'mat_chandoansobo_icd', xacdinh:'mat_chandoanxacdinh_icd', phanloai:'mat_phanloai', extra:[{code:'mat_cokinh_mp',label:'Có kính MP'},{code:'mat_cokinh_mt',label:'Có kính MT'}]},
+  {label:'Tai - Mũi - Họng', ck:'tmh_chuaphathienbatthuong', sobo:'tmh_chandoansobo_icd', xacdinh:'tmh_chandoanxacdinh_icd', phanloai:'tmh_phanloai'},
+  {label:'Răng - Hàm - Mặt', ck:'rhm_chuaphathienbatthuong', sobo:'rhm_chandoansobo_icd', xacdinh:'rhm_chandoanxacdinh_icd', phanloai:'rhm_phanloai'}
+];
+
+var KET_LUAN_FIELDS = [
+  {code:'loai_kham', label:'Loại khám', type:'select', options:[{v:1,t:'Khám Tuyển'},{v:2,t:'Khám Định kỳ'}]},
+  {code:'danh_muc_de_nghi', label:'Đề nghị', type:'select-dynamic', source:'deNghi'},
+  {code:'de_nghi', label:'Ghi rõ đề nghị', type:'text', optional:true}
+];
+
+// Danh mục nhỏ dùng khi chưa (hoặc không) kết nối được GAS — để vẫn dùng được bước
+// upload + Gemini trước, phần dropdown chỉ cần chính xác khi xuất Excel.
+var FALLBACK_REF = {
+  tinh: ['Thành Phố Hồ Chí Minh'],
+  danToc: ['Kinh'],
+  ngheNghiep: [],
+  diaDiemKham: ['Cơ Sở Khám Chữa Bệnh','Khám Lưu Động','Trạm Y Tế','KSK Tại Nhà','Trường Học'],
+  hinhThucChiTra: ['Ngân sách thành phố hỗ trợ','Người sử dụng lao động chi trả','Người dân tự chi trả','Nguồn khác'],
+  hinhThucKham: ['Khám Theo Hợp Đồng','Khám Phi Địa Giới','Tự Thực hiện'],
+  deNghi: ['Bình thường, hẹn khám định kỳ lần sau','Có yếu tố nguy cơ, cần theo dõi thêm','Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ','Chuyển cơ sở KBCB, khám chuyên khoa','Khác'],
+  doiTuong: [
+    {ma:1,ten:'Sinh Viên, học viên'},{ma:2,ten:'Người lao động chính thức'},{ma:3,ten:'Người lao động phi chính thức'},
+    {ma:6,ten:'Người khuyết tật'},{ma:7,ten:'Người thuộc hộ nghèo, cận nghèo'},{ma:8,ten:'Người có công'},
+    {ma:9,ten:'Người mắc bệnh mạn tính'},{ma:10,ten:'Người sống tại vùng đồng bào dân tộc thiểu số và miền núi'},
+    {ma:11,ten:'Người sống tại vùng có điều kiện kinh tế - xã hội khó khăn, đặc biệt khó khăn'},
+    {ma:12,ten:'Người sống tại xã đảo'},{ma:13,ten:'Người sống tại đặc khu'},{ma:19,ten:'Nhân khẩu đặc biệt'}
+  ]
+};
+
+// ============================================================
+// 2) STATE
+// ============================================================
+
+// URL Web App mặc định của anh Hưng — nếu chưa từng lưu cài đặt riêng trong trình duyệt này
+// thì dùng luôn URL này, khỏi phải dán tay lại mỗi lần mở trên máy/trình duyệt mới.
+var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbz933WWizph7CoTXRFBnf6jYxssnSZwi1smYycfHZ4MXqDWZykT--PitsRCrqPEFEz7Yg/exec';
+
+var STATE = {
+  geminiKey: '', model: 'gemini-3.1-flash-lite', gasUrl: '',
+  refData: null,
+  wardCache: {},
+  patients: [] // {id, fileName, blobUrl, base64, mimeType, status, data:{}, canXacNhan:[], icdAiDeXuat:[], errorMsg}
+};
+
+var NEXT_ID = 1;
+
+// ============================================================
+// 3) TIỆN ÍCH CHUNG
+// ============================================================
+
+function loadSettings() {
+  try {
+    STATE.geminiKey = localStorage.getItem('ocr_gemini_key') || '';
+    STATE.model = localStorage.getItem('ocr_gemini_model') || 'gemini-3.1-flash-lite';
+    STATE.gasUrl = localStorage.getItem('ocr_gas_url') || DEFAULT_GAS_URL;
+  } catch (e) { /* localStorage có thể bị chặn (chế độ ẩn danh) */ }
+}
+
+function saveSettings(key, model, gasUrl) {
+  STATE.geminiKey = key; STATE.model = model; STATE.gasUrl = gasUrl;
+  try {
+    localStorage.setItem('ocr_gemini_key', key);
+    localStorage.setItem('ocr_gemini_model', model);
+    localStorage.setItem('ocr_gas_url', gasUrl);
+  } catch (e) {}
+}
+
+function fileToBase64(file) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var result = reader.result; // data:application/pdf;base64,xxxx
+      var base64 = result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Áp quy tắc nghiệp vụ anh Hưng đã chốt, làm lại lần cuối phía client
+// (không phụ thuộc hoàn toàn vào việc Gemini có tuân thủ đúng prompt hay không).
+function applyBusinessRules(data) {
+  data = data || {};
+  if (!data.city_id) data.city_id = 'Thành Phố Hồ Chí Minh';
+  if (!data.ward_id) data.ward_id = 'Phường Linh Xuân';
+  if (!data.dia_diem_kham) data.dia_diem_kham = 'Trạm Y Tế';
+  if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Nguồn khác';
+  if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Khám Theo Hợp Đồng';
+  // Đối tượng khám: KHÔNG tự đoán — danh mục thật không có mục "Khác", chọn sai mã khó phát
+  // hiện lại sau này. Nếu Gemini không đọc được, phải để trống và luôn nằm trong _can_xac_nhan
+  // (ép hiện cảnh báo, buộc chọn tay lúc duyệt) — xem thêm rule #4 trong buildPrompt().
+  if (!Array.isArray(data.giadinh_benh_ids)) data.giadinh_benh_ids = [];
+  SPECIALTIES.forEach(function (sp) {
+    if (String(data[sp.ck]) === '1') data[sp.phanloai] = 1;
+  });
+  return data;
+}
+
+function setAllTienSuKhong(data) {
+  TIEN_SU_BAN_THAN_FIELDS.forEach(function (f) { data[f.code] = 0; });
+  return data;
+}
+
+// ============================================================
+// 4) PROMPT GEMINI
+// ============================================================
+
+function buildFieldListText() {
+  var lines = [];
+  function addSection(title, fields) {
+    lines.push('### ' + title);
+    fields.forEach(function (f) {
+      var opt = '';
+      if (f.options) {
+        opt = ' | lựa chọn hợp lệ: ' + JSON.stringify(f.options);
+      }
+      lines.push('- ' + f.code + ': ' + f.label + (f.hint ? ' (' + f.hint + ')' : '') + opt);
+      if (f.code === 'doi_tuong_kham') {
+        var dtList = (STATE.refData && STATE.refData.doiTuong) || FALLBACK_REF.doiTuong;
+        lines.push('  Danh mục mã hợp lệ (CHỈ được chọn 1 trong các mã này, KHÔNG tự bịa mã khác): ' + dtList.map(function (d) { return d.ma + '=' + d.ten; }).join(', '));
+      }
+    });
+  }
+  addSection('Hành chính', HANH_CHINH_FIELDS);
+  lines.push('### Tiền sử bệnh của gia đình (ông/bà/bố/mẹ/anh chị em ruột)');
+  lines.push('- giadinh_benh_ids: mảng số nguyên, map tên bệnh được ghi (nếu "Có" được tick) vào đúng các mã sau, có thể chọn nhiều mã: ' + TIEN_SU_GIA_DINH_OPTIONS.map(function (o) { return o.id + '=' + o.label; }).join(', ') + '. Nếu "Không" được tick hoặc không ghi gì, trả về mảng rỗng [].');
+  lines.push('### Tiền sử bản thân (mỗi mục: 1 = Có bệnh/tật, 0 = Không)');
+  TIEN_SU_BAN_THAN_FIELDS.forEach(function (f) { lines.push('- ' + f.code + ': ' + f.label); });
+  addSection('Câu hỏi khác (1 = Có, 0 = Không)', CAU_HOI_KHAC_FIELDS);
+  addSection('Khám thể lực', THE_LUC_FIELDS);
+  lines.push('### Khám lâm sàng theo chuyên khoa (với mỗi chuyên khoa: ck = 1 nếu "chưa phát hiện bất thường" được tick, 0 nếu có bất thường; sobo/xacdinh = mã ICD chữ viết tay nếu có; phanloai = 1-5)');
+  SPECIALTIES.forEach(function (sp) {
+    var extra = sp.tuchoi ? (', ' + sp.tuchoi + ' (1 nếu "từ chối khám" được tick, 0 nếu không)') : '';
+    lines.push('- ' + sp.label + ': ' + sp.ck + ', ' + sp.sobo + ', ' + sp.xacdinh + ', ' + sp.phanloai + extra);
+    if (sp.extra) sp.extra.forEach(function (e) { lines.push('  + ' + e.code + ': ' + e.label + ' (dạng phân số ví dụ "10/10", để trống nếu form không ghi)'); });
+  });
+  addSection('Kết luận', KET_LUAN_FIELDS);
+  return lines.join('\n');
+}
+
+function buildPrompt() {
+  return [
+    'Bạn đang đọc 1 file PDF scan tay "Mẫu 03 - Giấy khám sức khỏe và khám sức khỏe định kỳ" (Thông tư Bộ Y tế Việt Nam).',
+    'Nhiệm vụ: trích xuất đầy đủ thông tin theo đúng danh sách trường bên dưới, trả về DUY NHẤT 1 JSON object, không thêm chữ giải thích, không markdown code fence.',
+    '',
+    buildFieldListText(),
+    '',
+    '### QUY TẮC BẮT BUỘC (rất quan trọng, áp dụng đúng như sau):',
+    '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.',
+    '2. Với MỖI chuyên khoa khám lâm sàng: nếu ô "Chưa phát hiện bất thường" được đánh dấu/tick, PHẢI trả ck=1 VÀ phanloai=1 (không suy luận phanloai từ ô phân loại nữa trong trường hợp này).',
+    '3. Ở bảng "2. Tiền sử bệnh, tật của bản thân" (22 dòng, 2 cột Có/Không cho mỗi nửa bảng): nếu bác sĩ KHÔNG tick từng ô riêng lẻ mà chỉ gạch 1 đường thẳng dài xuyên suốt toàn bộ cột "Không", hiểu là TẤT CẢ các dòng trong bảng đó đều = Không (giá trị 0).',
+    '4. Trường doi_tuong_kham: CHỈ điền nếu chắc chắn khớp đúng 1 mã trong danh mục liệt kê ở trên. Nếu phiếu không ghi rõ hoặc không chắc chắn khớp mã nào, để chuỗi rỗng "" và BẮT BUỘC liệt kê "doi_tuong_kham" vào mảng "_can_xac_nhan" (đây là trường bắt buộc chọn tay, không tự đoán).',
+    '5. Với các trường mã ICD (…_chandoansobo_icd / …_chandoanxacdinh_icd): nếu ck=0 (có bất thường) nhưng bác sĩ không viết mã ICD cụ thể, hãy tự đề xuất 1 mã ICD-10 phù hợp nhất với mô tả lâm sàng viết tay, dựa theo bảng phân loại ICD-10 chuẩn của Bộ Y tế Việt Nam, và liệt kê tên field đó vào mảng "_icd_ai_de_xuat" trong JSON trả về.',
+    '6. Với BẤT KỲ trường nào chữ viết tay không rõ ràng khiến bạn không chắc chắn, vẫn điền giá trị đoán tốt nhất có thể nhưng liệt kê tên field đó vào mảng "_can_xac_nhan" trong JSON trả về.',
+    '7. Định dạng ngày: dd/MM/yyyy. Trường số: chỉ ghi số thuần, không kèm đơn vị.',
+    '8. Nếu 1 trường hoàn toàn không có thông tin trong phiếu và không suy luận được, để chuỗi rỗng "".',
+    '',
+    'Trả về JSON theo đúng cấu trúc: { "ho_ten": "...", ..., "_can_xac_nhan": ["code1","code2"], "_icd_ai_de_xuat": ["code3"] }'
+  ].join('\n');
+}
+
+// ============================================================
+// 5) GỌI GEMINI
+// ============================================================
+
+function parseGeminiText(text) {
+  var cleaned = String(text).trim();
+  cleaned = cleaned.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+  return JSON.parse(cleaned);
+}
+
+function callGemini(base64Pdf, apiKey, model) {
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(apiKey);
+  var payload = {
+    contents: [{
+      parts: [
+        { text: buildPrompt() },
+        { inline_data: { mime_type: 'application/pdf', data: base64Pdf } }
+      ]
+    }],
+    generationConfig: { temperature: 0, responseMimeType: 'application/json' }
+  };
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(function (res) {
+    if (!res.ok) return res.text().then(function (t) { throw new Error('Gemini lỗi ' + res.status + ': ' + t); });
+    return res.json();
+  }).then(function (json) {
+    var text = json.candidates && json.candidates[0] && json.candidates[0].content &&
+      json.candidates[0].content.parts && json.candidates[0].content.parts[0] &&
+      json.candidates[0].content.parts[0].text;
+    if (!text) throw new Error('Gemini không trả về nội dung (có thể bị chặn bởi safety filter).');
+    return parseGeminiText(text);
+  });
+}
+
+// ============================================================
+// 6) XỬ LÝ UPLOAD
+// ============================================================
+
+function handleFiles(fileList) {
+  var files = Array.prototype.slice.call(fileList).filter(function (f) { return f.type === 'application/pdf'; });
+  files.forEach(function (file) {
+    var patient = {
+      id: NEXT_ID++, fileName: file.name, blobUrl: URL.createObjectURL(file),
+      base64: null, status: 'processing', data: {}, canXacNhan: [], icdAiDeXuat: [], errorMsg: ''
+    };
+    STATE.patients.push(patient);
+    renderTable();
+    fileToBase64(file).then(function (b64) {
+      patient.base64 = b64;
+      if (!STATE.geminiKey) {
+        patient.status = 'error';
+        patient.errorMsg = 'Chưa cấu hình Gemini API key (mục Cài đặt).';
+        renderTable();
+        return;
+      }
+      return callGemini(b64, STATE.geminiKey, STATE.model).then(function (json) {
+        patient.canXacNhan = json._can_xac_nhan || [];
+        patient.icdAiDeXuat = json._icd_ai_de_xuat || [];
+        delete json._can_xac_nhan;
+        delete json._icd_ai_de_xuat;
+        patient.data = applyBusinessRules(json);
+        patient.status = 'pending';
+        renderTable();
+      }).catch(function (err) {
+        patient.status = 'error';
+        patient.errorMsg = String(err.message || err);
+        renderTable();
+      });
+    });
+  });
+}
+
+// ============================================================
+// 7) BẢNG DANH SÁCH
+// ============================================================
+
+function statusBadge(p) {
+  if (p.status === 'processing') return '<span class="badge badge-processing">Đang đọc...</span>';
+  if (p.status === 'pending') return '<span class="badge badge-pending">Chờ duyệt</span>';
+  if (p.status === 'approved') return '<span class="badge badge-approved">Đã duyệt</span>';
+  return '<span class="badge badge-error" title="' + escapeHtml(p.errorMsg) + '">Lỗi</span>';
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function renderTable() {
+  var tbody = document.getElementById('patientTbody');
+  var emptyHint = document.getElementById('emptyHint');
+  tbody.innerHTML = '';
+  emptyHint.style.display = STATE.patients.length ? 'none' : 'block';
+
+  STATE.patients.forEach(function (p, idx) {
+    var tr = document.createElement('tr');
+    tr.className = p.status === 'approved' ? 'status-approved' : (p.status === 'error' ? 'status-error' : '');
+    var canEdit = p.status === 'pending' || p.status === 'approved';
+    tr.innerHTML =
+      '<td>' + (idx + 1) + '</td>' +
+      '<td>' + escapeHtml(p.data.ho_ten || p.fileName) + '</td>' +
+      '<td>' + escapeHtml(p.data.ngay_sinh || '') + '</td>' +
+      '<td>' + escapeHtml(p.data.dinh_danh_ca_nhan || '') + '</td>' +
+      '<td>' + statusBadge(p) + (p.canXacNhan && p.canXacNhan.length ? ' <span class="tag-ai" title="Có trường cần xem lại">⚠ ' + p.canXacNhan.length + '</span>' : '') + '</td>' +
+      '<td>' +
+        (canEdit ? '<button class="btn btn-sm btn-secondary" data-action="view" data-id="' + p.id + '">Xem/Sửa</button> ' : '') +
+        '<button class="btn btn-sm btn-danger" data-action="remove" data-id="' + p.id + '">Xoá</button>' +
+      '</td>';
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('countTotal').textContent = STATE.patients.length;
+  var approvedCount = STATE.patients.filter(function (p) { return p.status === 'approved'; }).length;
+  document.getElementById('countApproved').textContent = approvedCount;
+  var btnExport = document.getElementById('btnExport');
+  btnExport.disabled = approvedCount === 0;
+  btnExport.textContent = '⬇ Xuất Excel (' + approvedCount + ' phiếu đã duyệt)';
+}
+
+function findPatient(id) {
+  id = Number(id);
+  for (var i = 0; i < STATE.patients.length; i++) if (STATE.patients[i].id === id) return STATE.patients[i];
+  return null;
+}
+
+function removePatient(id) {
+  STATE.patients = STATE.patients.filter(function (p) { return p.id !== Number(id); });
+  renderTable();
+}
+
+// ============================================================
+// 8) MODAL CHI TIẾT / SỬA
+// ============================================================
+
+function fieldValue(f, data) { return data[f.code] === undefined || data[f.code] === null ? '' : data[f.code]; }
+
+function renderSimpleField(f, data, warnSet) {
+  var isWarn = warnSet.has(f.code);
+  var html = '<div class="field' + (isWarn ? ' warn' : '') + '">';
+  html += '<label>' + escapeHtml(f.label) + (f.optional ? '' : ' *') + '</label>';
+  if (f.type === 'select') {
+    html += '<select data-code="' + f.code + '">';
+    f.options.forEach(function (opt) {
+      var v = (typeof opt === 'object') ? opt.v : opt;
+      var t = (typeof opt === 'object') ? opt.t : opt;
+      var sel = String(fieldValue(f, data)) === String(v) ? ' selected' : '';
+      html += '<option value="' + escapeHtml(v) + '"' + sel + '>' + escapeHtml(t) + '</option>';
+    });
+    html += '</select>';
+  } else if (f.type === 'select-dynamic') {
+    var list = (STATE.refData && STATE.refData[f.source]) || FALLBACK_REF[f.source] || [];
+    html += '<select data-code="' + f.code + '">';
+    html += '<option value="">-- chọn --</option>';
+    list.forEach(function (name) {
+      var sel = String(fieldValue(f, data)) === String(name) ? ' selected' : '';
+      html += '<option value="' + escapeHtml(name) + '"' + sel + '>' + escapeHtml(name) + '</option>';
+    });
+    html += '</select>';
+  } else if (f.type === 'select-doituong') {
+    var doiTuongList = (STATE.refData && STATE.refData.doiTuong) || FALLBACK_REF.doiTuong || [];
+    html += '<select data-code="' + f.code + '">';
+    html += '<option value="">-- chưa chọn (bắt buộc) --</option>';
+    doiTuongList.forEach(function (dt) {
+      var sel = String(fieldValue(f, data)) === String(dt.ma) ? ' selected' : '';
+      html += '<option value="' + escapeHtml(dt.ma) + '"' + sel + '>' + escapeHtml(dt.ma) + ' - ' + escapeHtml(dt.ten) + '</option>';
+    });
+    html += '</select>';
+  } else if (f.type === 'select-ward') {
+    html += '<select data-code="' + f.code + '" id="wardSelect">';
+    var wards = STATE.wardCache[data.city_id] || [];
+    if (data.ward_id && wards.indexOf(data.ward_id) === -1) wards = [data.ward_id].concat(wards);
+    wards.forEach(function (name) {
+      var sel = String(fieldValue(f, data)) === String(name) ? ' selected' : '';
+      html += '<option value="' + escapeHtml(name) + '"' + sel + '>' + escapeHtml(name) + '</option>';
+    });
+    html += '</select>';
+  } else {
+    html += '<input type="' + (f.type === 'number' ? 'number' : 'text') + '" data-code="' + f.code + '" value="' + escapeHtml(fieldValue(f, data)) + '">';
+  }
+  if (isWarn) html += '<div class="field-hint">⚠ AI không chắc chắn — kiểm tra lại với file gốc bên trái.</div>';
+  if (f.hint && !isWarn) html += '<div class="field-hint" style="color:#5f6368;">' + escapeHtml(f.hint) + '</div>';
+  html += '</div>';
+  return html;
+}
+
+function renderBool01Field(f, data, warnSet, yesNoLabel) {
+  var isWarn = warnSet.has(f.code);
+  var val = fieldValue(f, data);
+  var html = '<div class="field' + (isWarn ? ' warn' : '') + '">';
+  html += '<label>' + escapeHtml(f.label) + '</label>';
+  html += '<select data-code="' + f.code + '">';
+  html += '<option value="0"' + (String(val) === '0' ? ' selected' : '') + '>Không</option>';
+  html += '<option value="1"' + (String(val) === '1' ? ' selected' : '') + '>Có</option>';
+  html += '</select></div>';
+  return html;
+}
+
+function renderGiaDinhCheckboxes(data) {
+  var ids = data.giadinh_benh_ids || [];
+  var html = '<div class="grid3">';
+  TIEN_SU_GIA_DINH_OPTIONS.forEach(function (opt) {
+    var checked = ids.indexOf(opt.id) !== -1 ? ' checked' : '';
+    html += '<div class="field"><label style="font-weight:400;"><input type="checkbox" data-giadinh-id="' + opt.id + '"' + checked + '> ' + escapeHtml(opt.label) + '</label></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderClinicalTable(data, warnSet) {
+  var html = '<table class="clinical-table"><thead><tr><th>Chuyên khoa</th><th>Bình thường?</th><th>Chẩn đoán sơ bộ (ICD)</th><th>Chẩn đoán xác định (ICD)</th><th>Phân loại</th></tr></thead><tbody>';
+  SPECIALTIES.forEach(function (sp) {
+    var ck = fieldValue({ code: sp.ck }, data);
+    var sobo = fieldValue({ code: sp.sobo }, data);
+    var xacdinh = fieldValue({ code: sp.xacdinh }, data);
+    var phanloai = fieldValue({ code: sp.phanloai }, data);
+    var soboWarn = warnSet.has(sp.sobo);
+    var aiIcd = (data.__icdAi || []).indexOf(sp.sobo) !== -1;
+    html += '<tr>';
+    html += '<td>' + escapeHtml(sp.label) + (sp.tuchoi ? '<br><label style="font-weight:400;font-size:11px;"><input type="checkbox" data-code="' + sp.tuchoi + '" ' + (String(fieldValue({ code: sp.tuchoi }, data)) === '1' ? 'checked' : '') + '> Từ chối khám</label>' : '') + '</td>';
+    html += '<td><select data-code="' + sp.ck + '"><option value="1"' + (String(ck) === '1' ? ' selected' : '') + '>Bình thường</option><option value="0"' + (String(ck) === '0' ? ' selected' : '') + '>Bất thường</option></select></td>';
+    html += '<td class="' + (soboWarn ? 'warn-cell' : '') + '"><input type="text" data-code="' + sp.sobo + '" value="' + escapeHtml(sobo) + '">' + (aiIcd ? '<span class="tag-ai">AI đề xuất</span>' : '') + '</td>';
+    html += '<td><input type="text" data-code="' + sp.xacdinh + '" value="' + escapeHtml(xacdinh) + '"></td>';
+    html += '<td><select data-code="' + sp.phanloai + '">' + [1, 2, 3, 4, 5].map(function (n) { return '<option value="' + n + '"' + (String(phanloai) === String(n) ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></td>';
+    html += '</tr>';
+    if (sp.extra) {
+      html += '<tr><td colspan="5" style="background:#fafafa;">';
+      sp.extra.forEach(function (e) {
+        html += '<span style="margin-right:14px;font-size:12px;">' + escapeHtml(e.label) + ': <input style="width:70px;display:inline-block;" type="text" data-code="' + e.code + '" value="' + escapeHtml(fieldValue({ code: e.code }, data)) + '"></span>';
+      });
+      html += '</td></tr>';
+    }
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function openDetail(id) {
+  var p = findPatient(id);
+  if (!p) return;
+  document.getElementById('pdfFrame').src = p.blobUrl;
+  var warnSet = new Set(p.canXacNhan || []);
+  p.data.__icdAi = p.icdAiDeXuat || [];
+
+  var html = '<div class="modal-form-header"><h2>' + escapeHtml(p.data.ho_ten || p.fileName) + '</h2><button class="close-x" id="btnCloseModal">&times;</button></div>';
+
+  html += '<div class="section-title">Hành chính</div><div class="grid2">';
+  HANH_CHINH_FIELDS.forEach(function (f) { html += renderSimpleField(f, p.data, warnSet); });
+  html += '</div>';
+
+  html += '<div class="section-title">Tiền sử gia đình (ông/bà/bố/mẹ/anh chị em ruột)</div>';
+  html += renderGiaDinhCheckboxes(p.data);
+
+  html += '<div class="section-title">Tiền sử bản thân <button class="btn btn-sm btn-secondary" id="btnAllKhong" type="button">Đặt tất cả = Không</button></div><div class="grid3">';
+  TIEN_SU_BAN_THAN_FIELDS.forEach(function (f) { html += renderBool01Field(f, p.data, warnSet); });
+  html += '</div>';
+  html += '<div class="grid2">';
+  CAU_HOI_KHAC_FIELDS.forEach(function (f) {
+    if (f.type === 'bool01_yesno') html += renderBool01Field(f, p.data, warnSet);
+    else html += renderSimpleField(f, p.data, warnSet);
+  });
+  html += '</div>';
+
+  html += '<div class="section-title">Khám thể lực</div><div class="grid3">';
+  THE_LUC_FIELDS.forEach(function (f) { html += renderSimpleField(f, p.data, warnSet); });
+  html += '</div>';
+
+  html += '<div class="section-title">Khám lâm sàng</div>';
+  html += renderClinicalTable(p.data, warnSet);
+
+  html += '<div class="section-title">Kết luận</div><div class="grid2">';
+  KET_LUAN_FIELDS.forEach(function (f) { html += renderSimpleField(f, p.data, warnSet); });
+  html += '</div>';
+
+  html += '<div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">';
+  html += '<button class="btn btn-secondary" id="btnCloseModal2">Đóng (chưa duyệt)</button>';
+  html += '<button class="btn" id="btnApprove">✔ Duyệt phiếu này</button>';
+  html += '</div>';
+
+  document.getElementById('modalFormContainer').innerHTML = html;
+  document.getElementById('detailModal').classList.add('show');
+  document.getElementById('detailModal').dataset.currentId = id;
+
+  bindModalEvents(p);
+}
+
+function bindModalEvents(p) {
+  var container = document.getElementById('modalFormContainer');
+  container.querySelectorAll('[data-code]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      var code = el.dataset.code;
+      var val = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value;
+      p.data[code] = val;
+      if (code === 'city_id') { onCityChanged(p); }
+    });
+  });
+  container.querySelectorAll('[data-giadinh-id]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      var id = Number(el.dataset.giadinhId);
+      if (!Array.isArray(p.data.giadinh_benh_ids)) p.data.giadinh_benh_ids = [];
+      var idx = p.data.giadinh_benh_ids.indexOf(id);
+      if (el.checked && idx === -1) p.data.giadinh_benh_ids.push(id);
+      if (!el.checked && idx !== -1) p.data.giadinh_benh_ids.splice(idx, 1);
+    });
+  });
+  var btnAllKhong = document.getElementById('btnAllKhong');
+  if (btnAllKhong) btnAllKhong.addEventListener('click', function () {
+    setAllTienSuKhong(p.data);
+    openDetail(p.id); // vẽ lại modal để cập nhật giao diện
+  });
+  document.getElementById('btnCloseModal').addEventListener('click', closeModal);
+  document.getElementById('btnCloseModal2').addEventListener('click', closeModal);
+  document.getElementById('btnApprove').addEventListener('click', function () {
+    p.status = 'approved';
+    closeModal();
+    renderTable();
+  });
+}
+
+function onCityChanged(p) {
+  var cityName = p.data.city_id;
+  if (STATE.wardCache[cityName]) { openDetail(p.id); return; }
+  fetchWardsByCity(cityName).then(function () { openDetail(p.id); });
+}
+
+function closeModal() {
+  document.getElementById('detailModal').classList.remove('show');
+  document.getElementById('pdfFrame').src = '';
+}
+
+// ============================================================
+// 9) GỌI GAS: danh mục + xuất Excel
+// ============================================================
+
+function gasRequest(action, body) {
+  if (!STATE.gasUrl) return Promise.reject(new Error('Chưa cấu hình GAS Web App URL (mục Cài đặt).'));
+  var payload = Object.assign({ action: action }, body || {});
+  return fetch(STATE.gasUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // tránh preflight CORS
+    body: JSON.stringify(payload)
+  }).then(function (res) { return res.json(); });
+}
+
+function loadRefData() {
+  return gasRequest('getRefData').then(function (res) {
+    if (res.status === 'success') {
+      STATE.refData = res;
+      return fetchWardsByCity('Thành Phố Hồ Chí Minh');
+    }
+    throw new Error(res.message || 'Không tải được danh mục.');
+  }).catch(function (err) {
+    console.warn('Không tải được danh mục từ GAS, dùng danh mục rút gọn tạm thời:', err.message);
+    STATE.refData = null;
+  });
+}
+
+function fetchWardsByCity(cityName) {
+  return gasRequest('getWardsByCity', { cityName: cityName }).then(function (res) {
+    if (res.status === 'success') STATE.wardCache[cityName] = res.wards;
+  }).catch(function (err) { console.warn('Không tải được danh sách phường/xã:', err.message); });
+}
+
+function buildExportRecord(p) {
+  var rec = {};
+  Object.keys(p.data).forEach(function (k) {
+    if (k.indexOf('__') === 0) return; // bỏ field nội bộ (__icdAi)
+    if (k === 'giadinh_benh_ids') return; // quy đổi riêng bên dưới, không gửi mảng thô
+    rec[k] = p.data[k];
+  });
+  var ids = p.data.giadinh_benh_ids || [];
+  rec.giadinh_macbenh = ids.length ? 1 : 0;
+  rec.giadinh_danhsachbenh_icd = ids.join(',');
+  return rec;
+}
+
+function exportBatch() {
+  var approved = STATE.patients.filter(function (p) { return p.status === 'approved'; });
+  if (!approved.length) return;
+  var btn = document.getElementById('btnExport');
+  var oldText = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Đang xuất...';
+  var records = approved.map(buildExportRecord);
+  gasRequest('exportBatch', { records: records }).then(function (res) {
+    if (res.status !== 'success') throw new Error(res.message || 'Xuất thất bại.');
+    downloadBase64File(res.base64, res.fileName);
+  }).catch(function (err) {
+    alert('Xuất Excel thất bại: ' + err.message);
+  }).finally(function () {
+    btn.disabled = false; renderTable();
+  });
+}
+
+function downloadBase64File(base64, fileName) {
+  var byteChars = atob(base64);
+  var byteNumbers = new Array(byteChars.length);
+  for (var i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+  var byteArray = new Uint8Array(byteNumbers);
+  var blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// 10) KHỞI TẠO / GẮN SỰ KIỆN GIAO DIỆN
+// ============================================================
+
+function initUI() {
+  loadSettings();
+  document.getElementById('cfgGeminiKey').value = STATE.geminiKey;
+  document.getElementById('cfgModel').value = STATE.model;
+  document.getElementById('cfgGasUrl').value = STATE.gasUrl;
+
+  document.getElementById('btnToggleSettings').addEventListener('click', function () {
+    var panel = document.getElementById('settingsPanel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  });
+
+  document.getElementById('btnSaveSettings').addEventListener('click', function () {
+    saveSettings(
+      document.getElementById('cfgGeminiKey').value.trim(),
+      document.getElementById('cfgModel').value.trim() || 'gemini-3.1-flash-lite',
+      document.getElementById('cfgGasUrl').value.trim()
+    );
+    document.getElementById('settingsSavedMsg').textContent = 'Đã lưu.';
+    setTimeout(function () { document.getElementById('settingsSavedMsg').textContent = ''; }, 2000);
+    loadRefData();
+  });
+
+  var dropzone = document.getElementById('dropzone');
+  var fileInput = document.getElementById('fileInput');
+  dropzone.addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function (e) { handleFiles(e.target.files); fileInput.value = ''; });
+  dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('drag'); });
+  dropzone.addEventListener('drop', function (e) {
+    e.preventDefault(); dropzone.classList.remove('drag');
+    handleFiles(e.dataTransfer.files);
+  });
+
+  document.getElementById('patientTbody').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    var id = btn.dataset.id;
+    if (btn.dataset.action === 'view') openDetail(id);
+    if (btn.dataset.action === 'remove') removePatient(id);
+  });
+
+  document.getElementById('btnExport').addEventListener('click', exportBatch);
+
+  renderTable();
+  if (STATE.gasUrl) loadRefData();
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', initUI);
+}
+
+// Xuất ra để test (Node/jsdom) — không ảnh hưởng khi chạy trong trình duyệt thật.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    applyBusinessRules: applyBusinessRules, setAllTienSuKhong: setAllTienSuKhong,
+    buildPrompt: buildPrompt, parseGeminiText: parseGeminiText,
+    SPECIALTIES: SPECIALTIES, TIEN_SU_BAN_THAN_FIELDS: TIEN_SU_BAN_THAN_FIELDS,
+    HANH_CHINH_FIELDS: HANH_CHINH_FIELDS, buildExportRecord: buildExportRecord,
+    TIEN_SU_GIA_DINH_OPTIONS: TIEN_SU_GIA_DINH_OPTIONS
+  };
+}
+</script>
+</body>
+</html>
