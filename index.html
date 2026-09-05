@@ -376,6 +376,10 @@ function applyBusinessRules(data) {
   if (!data.dia_diem_kham) data.dia_diem_kham = 'Trạm Y Tế';
   if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Nguồn khác';
   if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Khám Theo Hợp Đồng';
+  if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
+  if (!data.danh_muc_de_nghi) data.danh_muc_de_nghi = 'Bình thường, hẹn khám định kỳ lần sau';
+  if (!data.de_nghi) data.de_nghi = 'Bình thường, hẹn khám lần sau';
+  if (!data.ly_do_kham) data.ly_do_kham = 'Lập Hồ Sơ Khám Sức khỏe Điện tử';
   // Đối tượng khám: KHÔNG tự đoán — danh mục thật không có mục "Khác", chọn sai mã khó phát
   // hiện lại sau này. Nếu Gemini không đọc được, phải để trống và luôn nằm trong _can_xac_nhan
   // (ép hiện cảnh báo, buộc chọn tay lúc duyệt) — xem thêm rule #4 trong buildPrompt().
@@ -443,7 +447,7 @@ function buildPrompt() {
     buildFieldListText(),
     '',
     '### QUY TẮC BẮT BUỘC (rất quan trọng, áp dụng đúng như sau):',
-    '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.',
+    '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; loai_kham = 2 (Khám Định Kỳ); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.',
     '2. Với MỖI chuyên khoa khám lâm sàng: nếu ô "Chưa phát hiện bất thường" được đánh dấu/tick, PHẢI trả ck=1 VÀ phanloai=1 (không suy luận phanloai từ ô phân loại nữa trong trường hợp này).',
     '3. Ở bảng "2. Tiền sử bệnh, tật của bản thân" (22 dòng, 2 cột Có/Không cho mỗi nửa bảng): nếu bác sĩ KHÔNG tick từng ô riêng lẻ mà chỉ gạch 1 đường thẳng dài xuyên suốt toàn bộ cột "Không", hiểu là TẤT CẢ các dòng trong bảng đó đều = Không (giá trị 0).',
     '4. Trường doi_tuong_kham: CHỈ điền nếu chắc chắn khớp đúng 1 mã trong danh mục liệt kê ở trên. Nếu phiếu không ghi rõ hoặc không chắc chắn khớp mã nào, để chuỗi rỗng "" và BẮT BUỘC liệt kê "doi_tuong_kham" vào mảng "_can_xac_nhan" (đây là trường bắt buộc chọn tay, không tự đoán).',
