@@ -369,8 +369,22 @@ function pdfFileToPageImages(file) {
 
 // Áp quy tắc nghiệp vụ anh Hưng đã chốt, làm lại lần cuối phía client
 // (không phụ thuộc hoàn toàn vào việc Gemini có tuân thủ đúng prompt hay không).
+// Các field dùng lựa chọn dạng {v,t} (Nam/Nữ, Rh-/Rh+, Khám Tuyển/Định kỳ...) — nếu Gemini lỡ
+// trả về CẢ OBJECT thay vì chỉ con số "v" (dù đã dặn rõ trong prompt), tự bóc lại giá trị đúng
+// ở đây để không bao giờ ghi cả object vào ô Excel (Apps Script sẽ tự in ra kiểu Java xấu xí
+// "{v=2.0, t=Nữ}" nếu lọt object xuống tới đó).
+var SELECT_OBJECT_FIELDS = ['gioi_tinh', 'yeu_to_nhom_mau_id', 'loai_kham'];
+
+function normalizeSelectObjectFields(data) {
+  SELECT_OBJECT_FIELDS.forEach(function (code) {
+    var v = data[code];
+    if (v && typeof v === 'object' && 'v' in v) data[code] = v.v;
+  });
+  return data;
+}
+
 function applyBusinessRules(data) {
-  data = data || {};
+  data = normalizeSelectObjectFields(data || {});
   if (!data.city_id) data.city_id = 'Thành Phố Hồ Chí Minh';
   if (!data.ward_id) data.ward_id = 'Phường Linh Xuân';
   if (!data.dia_diem_kham) data.dia_diem_kham = 'Trạm Y Tế';
@@ -406,7 +420,13 @@ function buildFieldListText() {
     fields.forEach(function (f) {
       var opt = '';
       if (f.options) {
-        opt = ' | lựa chọn hợp lệ: ' + JSON.stringify(f.options);
+        var isObjOptions = f.options.some(function (o) { return o && typeof o === 'object'; });
+        if (isObjOptions) {
+          opt = ' | CHỈ trả về đúng con số ở "v" (KHÔNG trả về cả object {v,t}). Các lựa chọn hợp lệ: ' +
+            f.options.filter(function (o) { return o.v !== ''; }).map(function (o) { return o.v + '=' + o.t; }).join(', ');
+        } else {
+          opt = ' | lựa chọn hợp lệ: ' + JSON.stringify(f.options);
+        }
       }
       lines.push('- ' + f.code + ': ' + f.label + (f.hint ? ' (' + f.hint + ')' : '') + opt);
       if (f.code === 'doi_tuong_kham') {
