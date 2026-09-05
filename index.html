@@ -43,6 +43,11 @@
   .field label{display:block;font-size:12px;color:#5f6368;margin-bottom:3px;font-weight:600;}
   .field input,.field select,.field textarea{width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:5px;font-size:14px;font-family:inherit;}
   .field.warn input,.field.warn select{background:var(--warn);border-color:var(--warn-border);}
+  .combo-dropdown{position:fixed;z-index:500;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);max-height:240px;overflow-y:auto;padding:4px 0;}
+  .combo-dropdown div{padding:7px 10px;font-size:14px;cursor:pointer;}
+  .combo-dropdown div:hover,.combo-dropdown div.active{background:var(--ai);}
+  .combo-dropdown .combo-empty{padding:7px 10px;font-size:13px;color:#9aa0a6;font-style:italic;cursor:default;}
+  .combo-dropdown .combo-empty:hover{background:transparent;}
   .field-hint{font-size:11px;color:#92610a;margin-top:2px;}
   .tag-ai{display:inline-block;background:var(--ai);border:1px solid var(--ai-border);color:#174ea6;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:6px;}
   .section-title{font-size:14px;font-weight:700;margin:18px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--brand);color:var(--brand-dark);}
@@ -153,6 +158,8 @@
   </div>
 </div>
 
+<div id="comboDropdown" class="combo-dropdown" hidden></div>
+
 <script>
 'use strict';
 
@@ -174,9 +181,9 @@ var HANH_CHINH_FIELDS = [
   {code:'the_bhyt', label:'Số thẻ BHYT', type:'text', optional:true},
   {code:'sdt', label:'Số điện thoại', type:'text'},
   {code:'dia_chi_hien_tai', label:'Chỗ ở hiện tại', type:'text'},
-  {code:'city_id', label:'Tỉnh/Thành phố', type:'select-dynamic', source:'tinh'},
-  {code:'ward_id', label:'Phường/Xã', type:'select-ward'},
-  {code:'nghenghiep_code', label:'Nghề nghiệp', type:'select-dynamic', source:'ngheNghiep'},
+  {code:'city_id', label:'Tỉnh/Thành phố', type:'select-dynamic', source:'tinh', searchable:true},
+  {code:'ward_id', label:'Phường/Xã', type:'select-ward', searchable:true},
+  {code:'nghenghiep_code', label:'Nghề nghiệp', type:'select-dynamic', source:'ngheNghiep', searchable:true},
   {code:'noi_cong_tac', label:'Nơi làm việc/công tác', type:'text', optional:true},
   {code:'ly_do_kham', label:'Lý do khám sức khỏe', type:'text', optional:true},
   {code:'hinh_thuc_chi_tra_khamsk', label:'Hình thức chi trả', type:'select-dynamic', source:'hinhThucChiTra'},
@@ -284,7 +291,9 @@ var FALLBACK_REF = {
   diaDiemKham: ['Cơ Sở Khám Chữa Bệnh','Khám Lưu Động','Trạm Y Tế','KSK Tại Nhà','Trường Học'],
   hinhThucChiTra: ['Ngân sách thành phố hỗ trợ','Người sử dụng lao động chi trả','Người dân tự chi trả','Nguồn khác'],
   hinhThucKham: ['Khám Theo Hợp Đồng','Khám Phi Địa Giới','Tự Thực hiện'],
-  deNghi: ['Bình thường, hẹn khám định kỳ lần sau','Có yếu tố nguy cơ, cần theo dõi thêm','Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ','Chuyển cơ sở KBCB, khám chuyên khoa','Khác'],
+  // Khớp đúng 5 giá trị của hệ thống thật (ảnh chụp dropdown "Đề Nghị" trong "Kết Luận") —
+  // trước đây mục thứ 4 ghi nhầm "Chuyển cơ sở KBCB, khám chuyên khoa", hệ thống thật ghi "Chuyển tuyến, khám chuyên khoa".
+  deNghi: ['Bình thường, hẹn khám định kỳ lần sau','Có yếu tố nguy cơ, cần theo dõi thêm','Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ','Chuyển tuyến, khám chuyên khoa','Khác'],
   doiTuong: [
     {ma:1,ten:'Sinh Viên, học viên'},{ma:2,ten:'Người lao động chính thức'},{ma:3,ten:'Người lao động phi chính thức'},
     {ma:6,ten:'Người khuyết tật'},{ma:7,ten:'Người thuộc hộ nghèo, cận nghèo'},{ma:8,ten:'Người có công'},
@@ -306,7 +315,8 @@ var STATE = {
   model: 'gemini-3.1-flash-lite', gasUrl: '',
   refData: null,
   wardCache: {},
-  patients: [] // {id, fileName, pages:[{base64,mimeType,blobUrl}], status, data:{}, canXacNhan:[], icdAiDeXuat:[], errorMsg}
+  patients: [], // {id, fileName, pages:[{base64,mimeType,blobUrl}], status, data:{}, canXacNhan:[], icdAiDeXuat:[], errorMsg}
+  comboLists: {}, comboActiveInput: null, comboActiveIndex: -1 // cho combobox tìm kiếm (Nghề nghiệp/Tỉnh/Phường-Xã)
 };
 
 var NEXT_ID = 1;
@@ -688,13 +698,17 @@ function renderSimpleField(f, data, warnSet) {
     // Không để mất giá trị AI đọc được nếu danh mục chưa tải xong / chưa khớp đúng chữ —
     // cùng cách đang làm cho Phường/Xã, áp dụng chung cho mọi select-dynamic.
     if (curVal && list.indexOf(curVal) === -1) list = [curVal].concat(list);
-    html += '<select data-code="' + f.code + '">';
-    html += '<option value="">-- chọn --</option>';
-    list.forEach(function (name) {
-      var sel = String(curVal) === String(name) ? ' selected' : '';
-      html += '<option value="' + escapeHtml(name) + '"' + sel + '>' + escapeHtml(name) + '</option>';
-    });
-    html += '</select>';
+    if (f.searchable) {
+      html += renderCombo(f.code, list, curVal);
+    } else {
+      html += '<select data-code="' + f.code + '">';
+      html += '<option value="">-- chọn --</option>';
+      list.forEach(function (name) {
+        var sel = String(curVal) === String(name) ? ' selected' : '';
+        html += '<option value="' + escapeHtml(name) + '"' + sel + '>' + escapeHtml(name) + '</option>';
+      });
+      html += '</select>';
+    }
   } else if (f.type === 'select-doituong') {
     var doiTuongList = (STATE.refData && STATE.refData.doiTuong) || FALLBACK_REF.doiTuong || [];
     var curDT = fieldValue(f, data);
@@ -709,14 +723,19 @@ function renderSimpleField(f, data, warnSet) {
     });
     html += '</select>';
   } else if (f.type === 'select-ward') {
-    html += '<select data-code="' + f.code + '" id="wardSelect">';
     var wards = STATE.wardCache[data.city_id] || [];
-    if (data.ward_id && wards.indexOf(data.ward_id) === -1) wards = [data.ward_id].concat(wards);
-    wards.forEach(function (name) {
-      var sel = String(fieldValue(f, data)) === String(name) ? ' selected' : '';
-      html += '<option value="' + escapeHtml(name) + '"' + sel + '>' + escapeHtml(name) + '</option>';
-    });
-    html += '</select>';
+    var curWard = fieldValue(f, data);
+    if (curWard && wards.indexOf(curWard) === -1) wards = [curWard].concat(wards);
+    if (f.searchable) {
+      html += renderCombo(f.code, wards, curWard);
+    } else {
+      html += '<select data-code="' + f.code + '" id="wardSelect">';
+      wards.forEach(function (name) {
+        var sel = String(curWard) === String(name) ? ' selected' : '';
+        html += '<option value="' + escapeHtml(name) + '"' + sel + '>' + escapeHtml(name) + '</option>';
+      });
+      html += '</select>';
+    }
   } else {
     html += '<input type="' + (f.type === 'number' ? 'number' : 'text') + '" data-code="' + f.code + '" value="' + escapeHtml(fieldValue(f, data)) + '">';
   }
@@ -736,6 +755,150 @@ function renderBool01Field(f, data, warnSet, yesNoLabel) {
   html += '<option value="1"' + (String(val) === '1' ? ' selected' : '') + '>Có</option>';
   html += '</select></div>';
   return html;
+}
+
+// ============================================================
+// 4b) COMBOBOX TÌM KIẾM (Nghề nghiệp / Tỉnh / Phường-Xã)
+// ------------------------------------------------------------
+// Vẫn dùng 1 <input type="hidden" data-code="..."> để tương thích với
+// cơ chế đọc dữ liệu form hiện có (container.querySelectorAll('[data-code]')
+// trong bindModalEvents) — chỉ thêm 1 ô <input type="text"> gõ-để-lọc phía trên.
+// Danh sách gợi ý dùng CHUNG 1 dropdown nổi (#comboDropdown, gắn ở cuối <body>)
+// để không bị modal-form (overflow-y:auto) cắt mất phần dropdown tràn ra ngoài.
+// ============================================================
+
+function renderCombo(code, list, currentValue) {
+  STATE.comboLists = STATE.comboLists || {};
+  STATE.comboLists[code] = list;
+  var display = (currentValue === undefined || currentValue === null) ? '' : String(currentValue);
+  return '<input type="text" class="combo-input" data-combo="' + code + '" autocomplete="off" placeholder="-- gõ để tìm --" value="' + escapeHtml(display) + '">' +
+         '<input type="hidden" data-code="' + code + '" value="' + escapeHtml(display) + '">';
+}
+
+function normalizeVN(str) {
+  return String(str || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+}
+
+function comboDropdownEl() { return document.getElementById('comboDropdown'); }
+
+function positionComboDropdown(inputEl) {
+  var dd = comboDropdownEl();
+  var r = inputEl.getBoundingClientRect();
+  dd.style.left = Math.round(r.left) + 'px';
+  dd.style.top = Math.round(r.bottom) + 'px';
+  dd.style.width = Math.round(r.width) + 'px';
+}
+
+function openCombo(inputEl) {
+  STATE.comboActiveInput = inputEl;
+  STATE.comboActiveIndex = -1;
+  renderComboOptions(inputEl);
+}
+
+var COMBO_MAX_SHOWN = 200;
+
+function renderComboOptions(inputEl) {
+  var dd = comboDropdownEl();
+  var code = inputEl.dataset.combo;
+  var list = STATE.comboLists[code] || [];
+  var q = normalizeVN(inputEl.value);
+  var filtered = q ? list.filter(function (item) { return normalizeVN(item).indexOf(q) !== -1; }) : list;
+  var shown = filtered.slice(0, COMBO_MAX_SHOWN);
+  var html = '';
+  if (!list.length) {
+    html = '<div class="combo-empty">Chưa có danh mục — kiểm tra kết nối GAS ở mục Cài đặt.</div>';
+  } else if (!shown.length) {
+    html = '<div class="combo-empty">Không tìm thấy — kiểm tra lại chính tả.</div>';
+  } else {
+    shown.forEach(function (item) {
+      html += '<div data-value="' + escapeHtml(item) + '">' + escapeHtml(item) + '</div>';
+    });
+    if (filtered.length > shown.length) {
+      html += '<div class="combo-empty">... còn ' + (filtered.length - shown.length) + ' kết quả khác, gõ thêm để thu hẹp</div>';
+    }
+  }
+  dd.innerHTML = html;
+  positionComboDropdown(inputEl);
+  dd.hidden = false;
+  STATE.comboActiveIndex = -1;
+}
+
+function comboOptionEls() {
+  var dd = comboDropdownEl();
+  return Array.prototype.filter.call(dd.children, function (el) { return el.dataset.value !== undefined; });
+}
+
+function highlightComboOption() {
+  var items = comboOptionEls();
+  items.forEach(function (el, i) { el.classList.toggle('active', i === STATE.comboActiveIndex); });
+  if (items[STATE.comboActiveIndex]) items[STATE.comboActiveIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function selectComboValue(inputEl, value) {
+  var hidden = inputEl.nextElementSibling;
+  inputEl.value = value;
+  if (hidden && hidden.dataset && hidden.dataset.code === inputEl.dataset.combo) {
+    hidden.value = value;
+    hidden.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  closeCombo();
+}
+
+function closeCombo() {
+  var dd = comboDropdownEl();
+  dd.hidden = true;
+  STATE.comboActiveInput = null;
+  STATE.comboActiveIndex = -1;
+}
+
+function initComboEvents() {
+  document.addEventListener('focusin', function (e) {
+    if (e.target.classList && e.target.classList.contains('combo-input')) openCombo(e.target);
+  });
+  document.addEventListener('input', function (e) {
+    if (e.target.classList && e.target.classList.contains('combo-input')) renderComboOptions(e.target);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (!e.target.classList || !e.target.classList.contains('combo-input')) return;
+    var dd = comboDropdownEl();
+    if (dd.hidden) return;
+    var items = comboOptionEls();
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (items.length) { STATE.comboActiveIndex = Math.min(STATE.comboActiveIndex + 1, items.length - 1); highlightComboOption(); }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (items.length) { STATE.comboActiveIndex = Math.max(STATE.comboActiveIndex - 1, 0); highlightComboOption(); }
+    } else if (e.key === 'Enter') {
+      var target = items[STATE.comboActiveIndex] || (items.length === 1 ? items[0] : null);
+      if (target) { e.preventDefault(); selectComboValue(e.target, target.dataset.value); }
+    } else if (e.key === 'Escape') {
+      closeCombo();
+    }
+  });
+  document.addEventListener('mousedown', function (e) {
+    if (comboDropdownEl().contains(e.target)) e.preventDefault(); // giữ focus ô input, không cho blur trước khi click
+  });
+  document.addEventListener('click', function (e) {
+    var dd = comboDropdownEl();
+    if (dd.contains(e.target) && e.target.dataset && e.target.dataset.value !== undefined && STATE.comboActiveInput) {
+      selectComboValue(STATE.comboActiveInput, e.target.dataset.value);
+    }
+  });
+  document.addEventListener('focusout', function (e) {
+    if (!e.target.classList || !e.target.classList.contains('combo-input')) return;
+    var inputEl = e.target;
+    setTimeout(function () {
+      closeCombo();
+      // Nếu chữ đang gõ không khớp CHÍNH XÁC 1 giá trị hợp lệ trong danh mục -> khôi phục lại
+      // giá trị đã chọn trước đó (tránh lưu nhầm giá trị tự do không có trong danh mục thật).
+      var list = STATE.comboLists[inputEl.dataset.combo] || [];
+      var hidden = inputEl.nextElementSibling;
+      if (list.indexOf(inputEl.value) === -1) inputEl.value = hidden ? hidden.value : '';
+    }, 150);
+  });
 }
 
 function renderGiaDinhCheckboxes(data) {
@@ -1039,14 +1202,21 @@ function closeModal() {
 // 9) GỌI GAS: danh mục + xuất Excel
 // ============================================================
 
+var GAS_REQUEST_TIMEOUT_MS = 100000; // 100 giây — quá thời gian này thì tự báo lỗi, không để treo mãi
+
 function gasRequest(action, body) {
   if (!STATE.gasUrl) return Promise.reject(new Error('Chưa cấu hình GAS Web App URL (mục Cài đặt).'));
   var payload = Object.assign({ action: action }, body || {});
+  var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timeoutId = controller ? setTimeout(function () { controller.abort(); }, GAS_REQUEST_TIMEOUT_MS) : null;
+
   return fetch(STATE.gasUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // tránh preflight CORS
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: controller ? controller.signal : undefined
   }).then(function (res) {
+    if (timeoutId) clearTimeout(timeoutId);
     return res.text().then(function (text) {
       var json;
       try {
@@ -1057,6 +1227,10 @@ function gasRequest(action, body) {
       return json;
     });
   }, function (networkErr) {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (networkErr && networkErr.name === 'AbortError') {
+      throw new Error('Hết thời gian chờ (quá ' + (GAS_REQUEST_TIMEOUT_MS / 1000) + ' giây) — Gemini/GAS có thể đang bị treo hoặc quá tải. Xoá phiếu này và thử tải lại file.');
+    }
     throw new Error('Không gọi được GAS Web App (lỗi mạng/CORS) — kiểm tra lại URL trong Cài đặt còn đúng không. Chi tiết: ' + networkErr.message);
   });
 }
@@ -1173,6 +1347,7 @@ function initUI() {
   renderTable();
   initZoomPan();
   initResizeHandle();
+  initComboEvents();
   if (STATE.gasUrl) loadRefData();
 }
 
