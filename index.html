@@ -51,8 +51,16 @@
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:stretch;justify-content:center;z-index:100;}
   .modal-overlay.show{display:flex;}
   .modal-box{background:#fff;width:100%;max-width:1200px;margin:16px;border-radius:10px;display:flex;overflow:hidden;max-height:calc(100vh - 32px);}
-  .modal-pdf{flex:0 0 42%;background:#333;display:flex;flex-direction:column;}
-  .modal-pdf img{width:100%;flex:1;object-fit:contain;background:#fff;}
+  .modal-pdf{flex:0 0 42%;min-width:220px;max-width:80%;background:#333;display:flex;flex-direction:column;}
+  .pdf-viewport{flex:1;overflow:hidden;position:relative;background:#222;cursor:grab;}
+  .pdf-viewport.dragging{cursor:grabbing;}
+  .pdf-viewport img{position:absolute;top:0;left:0;width:100%;height:auto;transform-origin:0 0;user-select:none;-webkit-user-drag:none;pointer-events:none;}
+  .zoom-controls{position:absolute;bottom:10px;right:10px;display:flex;gap:5px;z-index:5;}
+  .zoom-controls button{background:rgba(0,0,0,.65);color:#fff;border:1px solid #777;border-radius:5px;width:30px;height:30px;cursor:pointer;font-size:16px;line-height:1;}
+  .zoom-controls button:hover{background:rgba(0,0,0,.85);}
+  .zoom-pct{position:absolute;bottom:10px;left:10px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;padding:4px 8px;border-radius:5px;z-index:5;}
+  .resize-handle{flex:0 0 6px;background:#ddd;cursor:col-resize;transition:background .15s;}
+  .resize-handle:hover,.resize-handle.dragging{background:var(--brand);}
   .pdf-pager{display:none;gap:4px;padding:6px;background:#222;overflow-x:auto;flex:0 0 auto;}
   .pdf-pager-btn{background:#444;color:#ccc;border:1px solid #555;border-radius:4px;padding:4px 9px;font-size:12px;cursor:pointer;white-space:nowrap;}
   .pdf-pager-btn.active{background:var(--brand);color:#fff;border-color:var(--brand);}
@@ -84,13 +92,9 @@
   <div class="card" id="settingsPanel" style="display:none;">
     <div class="settings-row">
       <div class="field">
-        <label>Gemini API key (aistudio.google.com)</label>
-        <input type="password" id="cfgGeminiKey" placeholder="AIza...">
-      </div>
-      <div class="field">
         <label>Model Gemini</label>
         <input type="text" id="cfgModel" placeholder="gemini-3.1-flash-lite">
-        <div class="field-hint">Đổi ở đây nếu Google ngừng model cũ — không cần sửa code.</div>
+        <div class="field-hint">Đổi ở đây nếu Google ngừng model cũ — không cần sửa code. Key Gemini được cấu hình an toàn trong Apps Script (Script Properties), không nhập ở đây.</div>
       </div>
     </div>
     <div class="settings-row">
@@ -132,10 +136,19 @@
 
 <div class="modal-overlay" id="detailModal">
   <div class="modal-box">
-    <div class="modal-pdf">
+    <div class="modal-pdf" id="modalPdfPanel">
       <div class="pdf-pager" id="pdfPager"></div>
-      <img id="pdfFrame" alt="Trang phiếu gốc">
+      <div class="pdf-viewport" id="pdfViewport">
+        <img id="pdfFrame" alt="Trang phiếu gốc">
+        <div class="zoom-pct" id="zoomPct">100%</div>
+        <div class="zoom-controls">
+          <button type="button" id="btnZoomOut" title="Thu nhỏ">−</button>
+          <button type="button" id="btnZoomReset" title="Về 100%">⟲</button>
+          <button type="button" id="btnZoomIn" title="Phóng to">+</button>
+        </div>
+      </div>
     </div>
+    <div class="resize-handle" id="resizeHandle"></div>
     <div class="modal-form" id="modalFormContainer"></div>
   </div>
 </div>
@@ -237,9 +250,23 @@ var SPECIALTIES = [
   {label:'Da liễu', ck:'dalieu_chuaphathienbatthuong', sobo:'dalieu_chandoansobo_icd', xacdinh:'dalieu_chandoanxacdinh_icd', phanloai:'dalieu_phanloai'},
   {label:'Sản khoa', tuchoi:'sankhoa_tuchoikham', ck:'sankhoa_chuaphathienbatthuong', sobo:'sankhoa_chandoansobo_icd', xacdinh:'sankhoa_chandoanxacdinh_icd', phanloai:'sankhoa_phanloai'},
   {label:'Phụ khoa', tuchoi:'phukhoa_tuchoikham', ck:'phukhoa_chuaphathienbatthuong', sobo:'phukhoa_chandoansobo_icd', xacdinh:'phukhoa_chandoanxacdinh_icd', phanloai:'phukhoa_phanloai'},
-  {label:'Mắt', ck:'mat_chuaphathienbatthuong', sobo:'mat_chandoansobo_icd', xacdinh:'mat_chandoanxacdinh_icd', phanloai:'mat_phanloai', extra:[{code:'mat_cokinh_mp',label:'Có kính MP'},{code:'mat_cokinh_mt',label:'Có kính MT'}]},
+  {label:'Mắt', ck:'mat_chuaphathienbatthuong', sobo:'mat_chandoansobo_icd', xacdinh:'mat_chandoanxacdinh_icd', phanloai:'mat_phanloai'},
   {label:'Tai - Mũi - Họng', ck:'tmh_chuaphathienbatthuong', sobo:'tmh_chandoansobo_icd', xacdinh:'tmh_chandoanxacdinh_icd', phanloai:'tmh_phanloai'},
   {label:'Răng - Hàm - Mặt', ck:'rhm_chuaphathienbatthuong', sobo:'rhm_chandoansobo_icd', xacdinh:'rhm_chandoanxacdinh_icd', phanloai:'rhm_phanloai'}
+];
+
+// Chi tiết khám Mắt (khớp đúng 12 cột DR-EC trong file mẫu — xem đối chiếu với giao diện hệ
+// thống nhập tay: Khám thị lực Không kính/Kính lỗ/Có kính × MP/MT, và Khám khúc xạ Độ cầu/Độ
+// trụ/Trục × MP/MT). Lưu ý: 2 cột "mat_dotru_mp" và "mat_truc_mp" đặt tên đúng theo Ý NGHĨA
+// (khớp cột DY/DZ) — bản thân file mẫu gốc ghi nhầm tên mã ở 2 cột này, không phải lỗi ở đây.
+var MAT_THI_LUC_ROWS = [
+  { label: 'Không kính', mp: 'mat_khongkinh_mp', mt: 'mat_khongkinh_mt' },
+  { label: 'Kính lỗ', mp: 'mat_kinhlo_mp', mt: 'mat_kinhlo_mt' },
+  { label: 'Có kính', mp: 'mat_cokinh_mp', mt: 'mat_cokinh_mt' }
+];
+var MAT_KHUCXA_GROUPS = [
+  { label: 'Mắt phải (MP)', docau: 'mat_docau_mp', dotru: 'mat_dotru_mp', truc: 'mat_truc_mp' },
+  { label: 'Mắt trái (MT)', docau: 'mat_docau_mt', dotru: 'mat_dotru_mt', truc: 'mat_truc_mt' }
 ];
 
 var KET_LUAN_FIELDS = [
@@ -276,10 +303,10 @@ var FALLBACK_REF = {
 var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbz933WWizph7CoTXRFBnf6jYxssnSZwi1smYycfHZ4MXqDWZykT--PitsRCrqPEFEz7Yg/exec';
 
 var STATE = {
-  geminiKey: '', model: 'gemini-3.1-flash-lite', gasUrl: '',
+  model: 'gemini-3.1-flash-lite', gasUrl: '',
   refData: null,
   wardCache: {},
-  patients: [] // {id, fileName, blobUrl, base64, mimeType, status, data:{}, canXacNhan:[], icdAiDeXuat:[], errorMsg}
+  patients: [] // {id, fileName, pages:[{base64,mimeType,blobUrl}], status, data:{}, canXacNhan:[], icdAiDeXuat:[], errorMsg}
 };
 
 var NEXT_ID = 1;
@@ -294,16 +321,14 @@ if (typeof pdfjsLib !== 'undefined') {
 
 function loadSettings() {
   try {
-    STATE.geminiKey = localStorage.getItem('ocr_gemini_key') || '';
     STATE.model = localStorage.getItem('ocr_gemini_model') || 'gemini-3.1-flash-lite';
     STATE.gasUrl = localStorage.getItem('ocr_gas_url') || DEFAULT_GAS_URL;
   } catch (e) { /* localStorage có thể bị chặn (chế độ ẩn danh) */ }
 }
 
-function saveSettings(key, model, gasUrl) {
-  STATE.geminiKey = key; STATE.model = model; STATE.gasUrl = gasUrl;
+function saveSettings(model, gasUrl) {
+  STATE.model = model; STATE.gasUrl = gasUrl;
   try {
-    localStorage.setItem('ocr_gemini_key', key);
     localStorage.setItem('ocr_gemini_model', model);
     localStorage.setItem('ocr_gas_url', gasUrl);
   } catch (e) {}
@@ -397,7 +422,14 @@ function buildFieldListText() {
   SPECIALTIES.forEach(function (sp) {
     var extra = sp.tuchoi ? (', ' + sp.tuchoi + ' (1 nếu "từ chối khám" được tick, 0 nếu không)') : '';
     lines.push('- ' + sp.label + ': ' + sp.ck + ', ' + sp.sobo + ', ' + sp.xacdinh + ', ' + sp.phanloai + extra);
-    if (sp.extra) sp.extra.forEach(function (e) { lines.push('  + ' + e.code + ': ' + e.label + ' (dạng phân số ví dụ "10/10", để trống nếu form không ghi)'); });
+  });
+  lines.push('### Khám thị lực (phần "Mắt"), mỗi ô là số nguyên trên thang /10, để trống nếu form không ghi');
+  MAT_THI_LUC_ROWS.forEach(function (row) {
+    lines.push('- ' + row.mp + ', ' + row.mt + ': "' + row.label + '" — mắt phải (MP) và mắt trái (MT)');
+  });
+  lines.push('### Khám khúc xạ (phần "Mắt", chỉ ghi nếu form có mục "Khám khúc xạ (nếu có)"), độ cầu/độ trụ dạng số thập phân (ví dụ -0.75), trục dạng số nguyên độ (0-180)');
+  MAT_KHUCXA_GROUPS.forEach(function (g) {
+    lines.push('- ' + g.docau + ' (Độ cầu), ' + g.dotru + ' (Độ trụ), ' + g.truc + ' (Trục): "' + g.label + '"');
   });
   addSection('Kết luận', KET_LUAN_FIELDS);
   return lines.join('\n');
@@ -435,29 +467,15 @@ function parseGeminiText(text) {
   return JSON.parse(cleaned);
 }
 
-function callGemini(pageList, apiKey, model) {
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(apiKey);
-  var parts = [{ text: buildPrompt() }];
-  pageList.forEach(function (pg) {
-    parts.push({ inline_data: { mime_type: pg.mimeType, data: pg.base64 } });
-  });
-  var payload = {
-    contents: [{ parts: parts }],
-    generationConfig: { temperature: 0, responseMimeType: 'application/json' }
+function callGemini(pageList, model) {
+  var body = {
+    model: model,
+    promptText: buildPrompt(),
+    pages: pageList.map(function (pg) { return { mimeType: pg.mimeType, base64: pg.base64 }; })
   };
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }).then(function (res) {
-    if (!res.ok) return res.text().then(function (t) { throw new Error('Gemini lỗi ' + res.status + ': ' + t); });
-    return res.json();
-  }).then(function (json) {
-    var text = json.candidates && json.candidates[0] && json.candidates[0].content &&
-      json.candidates[0].content.parts && json.candidates[0].content.parts[0] &&
-      json.candidates[0].content.parts[0].text;
-    if (!text) throw new Error('Gemini không trả về nội dung (có thể bị chặn bởi safety filter).');
-    return parseGeminiText(text);
+  return gasRequest('callGemini', body).then(function (res) {
+    if (res.status !== 'success') throw new Error(res.message || 'Gemini lỗi không rõ.');
+    return parseGeminiText(res.text);
   });
 }
 
@@ -515,14 +533,8 @@ function handleFiles(fileList) {
     chain.then(function (allPages) {
       patient.pages = allPages;
       if (!allPages.length) throw new Error('Không tách được trang nào từ file PDF này.');
-      if (!STATE.geminiKey) {
-        patient.status = 'error';
-        patient.errorMsg = 'Chưa cấu hình Gemini API key (mục Cài đặt).';
-        renderTable();
-        return;
-      }
       renderTable(); // cập nhật ngay để anh thấy số trang đã tách xong trong lúc chờ Gemini
-      return callGemini(allPages, STATE.geminiKey, STATE.model).then(function (json) {
+      return callGemini(allPages, STATE.model).then(function (json) {
         patient.canXacNhan = json._can_xac_nhan || [];
         patient.icdAiDeXuat = json._icd_ai_de_xuat || [];
         delete json._can_xac_nhan;
@@ -692,21 +704,128 @@ function renderClinicalTable(data, warnSet) {
     html += '<td><input type="text" data-code="' + sp.xacdinh + '" value="' + escapeHtml(xacdinh) + '"></td>';
     html += '<td><select data-code="' + sp.phanloai + '">' + [1, 2, 3, 4, 5].map(function (n) { return '<option value="' + n + '"' + (String(phanloai) === String(n) ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></td>';
     html += '</tr>';
-    if (sp.extra) {
-      html += '<tr><td colspan="5" style="background:#fafafa;">';
-      sp.extra.forEach(function (e) {
-        html += '<span style="margin-right:14px;font-size:12px;">' + escapeHtml(e.label) + ': <input style="width:70px;display:inline-block;" type="text" data-code="' + e.code + '" value="' + escapeHtml(fieldValue({ code: e.code }, data)) + '"></span>';
-      });
-      html += '</td></tr>';
-    }
   });
   html += '</tbody></table>';
   return html;
 }
 
+// Khối chi tiết khám Mắt: Khám thị lực (Không kính/Kính lỗ/Có kính x MP/MT) + Khám khúc xạ
+// (Độ cầu/Độ trụ/Trục x MP/MT) — khớp đúng giao diện tham khảo anh Hưng gửi.
+function renderMatChiTiet(data, warnSet) {
+  var html = '<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:8px;background:#fafbfc;">';
+  html += '<div style="font-weight:600;font-size:13px;margin-bottom:8px;">👁 Khám thị lực (thang điểm /10)</div>';
+  html += '<table class="clinical-table" style="margin-top:0;"><thead><tr><th></th><th>Mắt phải (MP)</th><th>Mắt trái (MT)</th></tr></thead><tbody>';
+  MAT_THI_LUC_ROWS.forEach(function (row) {
+    html += '<tr><td>' + escapeHtml(row.label) + '</td>';
+    [row.mp, row.mt].forEach(function (code) {
+      var warn = warnSet.has(code) ? 'warn-cell' : '';
+      html += '<td class="' + warn + '"><input type="text" data-code="' + code + '" value="' + escapeHtml(fieldValue({ code: code }, data)) + '" placeholder=".../10"></td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="font-weight:600;font-size:13px;margin:12px 0 8px;">🔍 Khám khúc xạ (nếu có)</div>';
+  html += '<table class="clinical-table" style="margin-top:0;"><thead><tr><th></th><th>Độ cầu</th><th>Độ trụ</th><th>Trục</th></tr></thead><tbody>';
+  MAT_KHUCXA_GROUPS.forEach(function (g) {
+    html += '<tr><td>' + escapeHtml(g.label) + '</td>';
+    [g.docau, g.dotru, g.truc].forEach(function (code) {
+      var warn = warnSet.has(code) ? 'warn-cell' : '';
+      html += '<td class="' + warn + '"><input type="text" data-code="' + code + '" value="' + escapeHtml(fieldValue({ code: code }, data)) + '"></td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// ============================================================
+// 8b) ZOOM / KÉO DI CHUYỂN / KÉO GIÃN KHUNG XEM PHIẾU GỐC
+// ============================================================
+
+var ZOOM = { scale: 1, x: 0, y: 0 };
+var ZOOM_MIN = 1, ZOOM_MAX = 6;
+
+function applyZoomTransform() {
+  var img = document.getElementById('pdfFrame');
+  img.style.transform = 'translate(' + ZOOM.x + 'px,' + ZOOM.y + 'px) scale(' + ZOOM.scale + ')';
+  document.getElementById('zoomPct').textContent = Math.round(ZOOM.scale * 100) + '%';
+}
+
+function resetZoom() {
+  ZOOM = { scale: 1, x: 0, y: 0 };
+  applyZoomTransform();
+}
+
+function zoomAround(cx, cy, factor) {
+  var newScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, ZOOM.scale * factor));
+  ZOOM.x = cx - (cx - ZOOM.x) * (newScale / ZOOM.scale);
+  ZOOM.y = cy - (cy - ZOOM.y) * (newScale / ZOOM.scale);
+  ZOOM.scale = newScale;
+  if (ZOOM.scale <= ZOOM_MIN + 0.001) { ZOOM.x = 0; ZOOM.y = 0; }
+  applyZoomTransform();
+}
+
+// Gắn sự kiện 1 LẦN DUY NHẤT lúc khởi tạo trang (các phần tử #pdfViewport, #pdfFrame... là cố
+// định trong HTML tĩnh, không bị tạo lại mỗi lần mở modal — chỉ phần form bên phải mới vẽ lại).
+function initZoomPan() {
+  var viewport = document.getElementById('pdfViewport');
+  var dragging = false, lastX = 0, lastY = 0;
+
+  viewport.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var rect = viewport.getBoundingClientRect();
+    var factor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
+    zoomAround(e.clientX - rect.left, e.clientY - rect.top, factor);
+  }, { passive: false });
+
+  viewport.addEventListener('mousedown', function (e) {
+    if (ZOOM.scale <= ZOOM_MIN) return;
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    viewport.classList.add('dragging');
+  });
+  window.addEventListener('mousemove', function (e) {
+    if (!dragging) return;
+    ZOOM.x += (e.clientX - lastX); ZOOM.y += (e.clientY - lastY);
+    lastX = e.clientX; lastY = e.clientY;
+    applyZoomTransform();
+  });
+  window.addEventListener('mouseup', function () { dragging = false; viewport.classList.remove('dragging'); });
+  viewport.addEventListener('dblclick', resetZoom);
+
+  document.getElementById('btnZoomIn').addEventListener('click', function () {
+    var r = viewport.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, 1.3);
+  });
+  document.getElementById('btnZoomOut').addEventListener('click', function () {
+    var r = viewport.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, 1 / 1.3);
+  });
+  document.getElementById('btnZoomReset').addEventListener('click', resetZoom);
+}
+
+// Kéo thanh chia để giãn/thu hẹp bề rộng khung xem phiếu gốc so với form bên phải.
+function initResizeHandle() {
+  var handle = document.getElementById('resizeHandle');
+  var pdfPanel = document.getElementById('modalPdfPanel');
+  var modalBox = document.querySelector('.modal-box');
+  var dragging = false;
+
+  handle.addEventListener('mousedown', function (e) {
+    dragging = true; handle.classList.add('dragging'); e.preventDefault();
+  });
+  window.addEventListener('mousemove', function (e) {
+    if (!dragging) return;
+    var boxRect = modalBox.getBoundingClientRect();
+    var newWidth = e.clientX - boxRect.left;
+    var minW = 220, maxW = boxRect.width - 320;
+    newWidth = Math.max(minW, Math.min(maxW, newWidth));
+    pdfPanel.style.flex = '0 0 ' + newWidth + 'px';
+  });
+  window.addEventListener('mouseup', function () { dragging = false; handle.classList.remove('dragging'); });
+}
+
 function renderPdfPager(p, activeIndex) {
   var pager = document.getElementById('pdfPager');
   document.getElementById('pdfFrame').src = p.pages[activeIndex].blobUrl;
+  resetZoom();
   if (p.pages.length <= 1) { pager.innerHTML = ''; pager.style.display = 'none'; return; }
   pager.style.display = 'flex';
   pager.innerHTML = p.pages.map(function (pg, i) {
@@ -749,6 +868,7 @@ function openDetail(id) {
 
   html += '<div class="section-title">Khám lâm sàng</div>';
   html += renderClinicalTable(p.data, warnSet);
+  html += renderMatChiTiet(p.data, warnSet);
 
   html += '<div class="section-title">Kết luận</div><div class="grid2">';
   KET_LUAN_FIELDS.forEach(function (f) { html += renderSimpleField(f, p.data, warnSet); });
@@ -892,7 +1012,6 @@ function downloadBase64File(base64, fileName) {
 
 function initUI() {
   loadSettings();
-  document.getElementById('cfgGeminiKey').value = STATE.geminiKey;
   document.getElementById('cfgModel').value = STATE.model;
   document.getElementById('cfgGasUrl').value = STATE.gasUrl;
 
@@ -903,7 +1022,6 @@ function initUI() {
 
   document.getElementById('btnSaveSettings').addEventListener('click', function () {
     saveSettings(
-      document.getElementById('cfgGeminiKey').value.trim(),
       document.getElementById('cfgModel').value.trim() || 'gemini-3.1-flash-lite',
       document.getElementById('cfgGasUrl').value.trim()
     );
@@ -934,6 +1052,8 @@ function initUI() {
   document.getElementById('btnExport').addEventListener('click', exportBatch);
 
   renderTable();
+  initZoomPan();
+  initResizeHandle();
   if (STATE.gasUrl) loadRefData();
 }
 
