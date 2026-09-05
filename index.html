@@ -165,7 +165,7 @@ var HANH_CHINH_FIELDS = [
   {code:'doi_tuong_kham', label:'Đối tượng khám', type:'select-doituong', hint:'Bắt buộc chọn tay nếu phiếu không ghi rõ — danh mục không có mục "Khác"'},
   {code:'dia_diem_kham', label:'Địa điểm khám', type:'select', options:['Cơ Sở Khám Chữa Bệnh','Khám Lưu Động','Trạm Y Tế','KSK Tại Nhà','Trường Học']},
   {code:'dinh_danh_ca_nhan', label:'Số CCCD/Định danh', type:'text'},
-  {code:'ho_ten', label:'Họ và tên', type:'text'},
+  {code:'ho_ten', label:'Họ và tên', type:'text', hint:'luôn viết IN HOA toàn bộ, có dấu'},
   {code:'ngay_sinh', label:'Ngày sinh', type:'text', hint:'dd/MM/yyyy'},
   {code:'gioi_tinh', label:'Giới tính', type:'select', options:[{v:1,t:'Nam'},{v:2,t:'Nữ'},{v:3,t:'Chưa xác định'}]},
   {code:'dan_toc_id', label:'Dân tộc', type:'select-dynamic', source:'danToc'},
@@ -385,6 +385,7 @@ function normalizeSelectObjectFields(data) {
 
 function applyBusinessRules(data) {
   data = normalizeSelectObjectFields(data || {});
+  if (data.ho_ten) data.ho_ten = String(data.ho_ten).toUpperCase();
   if (!data.city_id) data.city_id = 'Thành Phố Hồ Chí Minh';
   if (!data.ward_id) data.ward_id = 'Phường Linh Xuân';
   if (!data.dia_diem_kham) data.dia_diem_kham = 'Trạm Y Tế';
@@ -661,19 +662,27 @@ function renderSimpleField(f, data, warnSet) {
     html += '</select>';
   } else if (f.type === 'select-dynamic') {
     var list = (STATE.refData && STATE.refData[f.source]) || FALLBACK_REF[f.source] || [];
+    var curVal = fieldValue(f, data);
+    // Không để mất giá trị AI đọc được nếu danh mục chưa tải xong / chưa khớp đúng chữ —
+    // cùng cách đang làm cho Phường/Xã, áp dụng chung cho mọi select-dynamic.
+    if (curVal && list.indexOf(curVal) === -1) list = [curVal].concat(list);
     html += '<select data-code="' + f.code + '">';
     html += '<option value="">-- chọn --</option>';
     list.forEach(function (name) {
-      var sel = String(fieldValue(f, data)) === String(name) ? ' selected' : '';
+      var sel = String(curVal) === String(name) ? ' selected' : '';
       html += '<option value="' + escapeHtml(name) + '"' + sel + '>' + escapeHtml(name) + '</option>';
     });
     html += '</select>';
   } else if (f.type === 'select-doituong') {
     var doiTuongList = (STATE.refData && STATE.refData.doiTuong) || FALLBACK_REF.doiTuong || [];
+    var curDT = fieldValue(f, data);
+    if (curDT && !doiTuongList.some(function (dt) { return String(dt.ma) === String(curDT); })) {
+      doiTuongList = [{ ma: curDT, ten: '(AI đọc được, không khớp danh mục hiện có — kiểm tra lại)' }].concat(doiTuongList);
+    }
     html += '<select data-code="' + f.code + '">';
     html += '<option value="">-- chưa chọn (bắt buộc) --</option>';
     doiTuongList.forEach(function (dt) {
-      var sel = String(fieldValue(f, data)) === String(dt.ma) ? ' selected' : '';
+      var sel = String(curDT) === String(dt.ma) ? ' selected' : '';
       html += '<option value="' + escapeHtml(dt.ma) + '"' + sel + '>' + escapeHtml(dt.ma) + ' - ' + escapeHtml(dt.ten) + '</option>';
     });
     html += '</select>';
@@ -875,6 +884,14 @@ function openDetail(id) {
 
   var html = '<div class="modal-form-header"><h2>' + escapeHtml(p.data.ho_ten || p.fileName) + '</h2><button class="close-x" id="btnCloseModal">&times;</button></div>';
 
+  if (!STATE.refData) {
+    html += '<div style="background:var(--warn);border:1px solid var(--warn-border);border-radius:6px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#92610a;">' +
+      '⚠ Không tải được danh mục đầy đủ (Nghề nghiệp, Tỉnh/Thành, Phường/Xã...) — các dropdown liên quan có thể thiếu lựa chọn hoặc không tự cập nhật khi đổi Tỉnh/Thành.' +
+      (STATE.refDataError ? '<br>Chi tiết: ' + escapeHtml(STATE.refDataError) : '') +
+      ' <button type="button" class="btn btn-sm btn-secondary" id="btnRetryRefData" style="margin-top:6px;">Thử tải lại danh mục</button>' +
+      '</div>';
+  }
+
   html += '<div class="section-title">Hành chính</div><div class="grid2">';
   HANH_CHINH_FIELDS.forEach(function (f) { html += renderSimpleField(f, p.data, warnSet); });
   html += '</div>';
@@ -918,6 +935,11 @@ function openDetail(id) {
 
 function bindModalEvents(p) {
   var container = document.getElementById('modalFormContainer');
+  var btnRetryRef = document.getElementById('btnRetryRefData');
+  if (btnRetryRef) btnRetryRef.addEventListener('click', function () {
+    btnRetryRef.textContent = 'Đang tải...'; btnRetryRef.disabled = true;
+    loadRefData().then(function () { openDetail(p.id); });
+  });
   container.querySelectorAll('[data-code]').forEach(function (el) {
     el.addEventListener('change', function () {
       var code = el.dataset.code;
@@ -990,12 +1012,14 @@ function loadRefData() {
   return gasRequest('getRefData').then(function (res) {
     if (res.status === 'success') {
       STATE.refData = res;
+      STATE.refDataError = null;
       return fetchWardsByCity('Thành Phố Hồ Chí Minh');
     }
     throw new Error(res.message || 'Không tải được danh mục.');
   }).catch(function (err) {
     console.warn('Không tải được danh mục từ GAS, dùng danh mục rút gọn tạm thời:', err.message);
     STATE.refData = null;
+    STATE.refDataError = String(err.message || err);
   });
 }
 
