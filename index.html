@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OCR Phiếu khám sức khỏe (Mẫu 03)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <style>
   :root{
     --brand:#1a73e8; --brand-dark:#0b57cf; --bg:#f4f6f8; --card:#ffffff;
@@ -50,8 +51,11 @@
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:stretch;justify-content:center;z-index:100;}
   .modal-overlay.show{display:flex;}
   .modal-box{background:#fff;width:100%;max-width:1200px;margin:16px;border-radius:10px;display:flex;overflow:hidden;max-height:calc(100vh - 32px);}
-  .modal-pdf{flex:0 0 42%;background:#333;}
-  .modal-pdf iframe{width:100%;height:100%;border:none;}
+  .modal-pdf{flex:0 0 42%;background:#333;display:flex;flex-direction:column;}
+  .modal-pdf img{width:100%;flex:1;object-fit:contain;background:#fff;}
+  .pdf-pager{display:none;gap:4px;padding:6px;background:#222;overflow-x:auto;flex:0 0 auto;}
+  .pdf-pager-btn{background:#444;color:#ccc;border:1px solid #555;border-radius:4px;padding:4px 9px;font-size:12px;cursor:pointer;white-space:nowrap;}
+  .pdf-pager-btn.active{background:var(--brand);color:#fff;border-color:var(--brand);}
   .modal-form{flex:1;overflow-y:auto;padding:18px;}
   .modal-form-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
   .modal-form-header h2{font-size:16px;margin:0;}
@@ -128,7 +132,10 @@
 
 <div class="modal-overlay" id="detailModal">
   <div class="modal-box">
-    <div class="modal-pdf"><iframe id="pdfFrame"></iframe></div>
+    <div class="modal-pdf">
+      <div class="pdf-pager" id="pdfPager"></div>
+      <img id="pdfFrame" alt="Trang phiếu gốc">
+    </div>
     <div class="modal-form" id="modalFormContainer"></div>
   </div>
 </div>
@@ -277,6 +284,10 @@ var STATE = {
 
 var NEXT_ID = 1;
 
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+}
+
 // ============================================================
 // 3) TIỆN ÍCH CHUNG
 // ============================================================
@@ -298,16 +309,36 @@ function saveSettings(key, model, gasUrl) {
   } catch (e) {}
 }
 
-function fileToBase64(file) {
-  return new Promise(function (resolve, reject) {
-    var reader = new FileReader();
-    reader.onload = function () {
-      var result = reader.result; // data:application/pdf;base64,xxxx
-      var base64 = result.split(',')[1];
-      resolve(base64);
+
+// Tách 1 file PDF (có thể nhiều trang) thành từng ẢNH riêng (1 ảnh/trang) rồi mới gửi cho
+// Gemini — đáng tin cậy hơn nhiều so với gửi thẳng nguyên file PDF nhiều trang (Gemini có lúc
+// chỉ đọc được 1 trang khi nhận cả file PDF gộp). Trả về mảng [{base64, mimeType, blobUrl}].
+function pdfFileToPageImages(file) {
+  if (typeof pdfjsLib === 'undefined') {
+    return Promise.reject(new Error('Chưa tải được thư viện đọc PDF (pdf.js) — kiểm tra lại kết nối mạng rồi tải lại trang.'));
+  }
+  return file.arrayBuffer().then(function (buf) {
+    return pdfjsLib.getDocument({ data: buf }).promise;
+  }).then(function (pdf) {
+    var chain = Promise.resolve([]);
+    var _loop = function (pageNum) {
+      chain = chain.then(function (acc) {
+        return pdf.getPage(pageNum).then(function (page) {
+          var viewport = page.getViewport({ scale: 2.0 });
+          var canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          var ctx = canvas.getContext('2d');
+          return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
+            var dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+            acc.push({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg', blobUrl: dataUrl });
+            return acc;
+          });
+        });
+      });
     };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    for (var pageNum = 1; pageNum <= pdf.numPages; pageNum++) { _loop(pageNum); }
+    return chain;
   });
 }
 
@@ -388,6 +419,7 @@ function buildPrompt() {
     '6. Với BẤT KỲ trường nào chữ viết tay không rõ ràng khiến bạn không chắc chắn, vẫn điền giá trị đoán tốt nhất có thể nhưng liệt kê tên field đó vào mảng "_can_xac_nhan" trong JSON trả về.',
     '7. Định dạng ngày: dd/MM/yyyy. Trường số: chỉ ghi số thuần, không kèm đơn vị.',
     '8. Nếu 1 trường hoàn toàn không có thông tin trong phiếu và không suy luận được, để chuỗi rỗng "".',
+    '9. Nếu có nhiều hơn 1 file/ảnh được đính kèm cùng lúc, hiểu rằng TẤT CẢ đều là các trang khác nhau của CÙNG 1 phiếu khám của 1 bệnh nhân — tổng hợp thông tin từ tất cả các trang đó vào 1 JSON object duy nhất, không tách thành nhiều bệnh nhân.',
     '',
     'Trả về JSON theo đúng cấu trúc: { "ho_ten": "...", ..., "_can_xac_nhan": ["code1","code2"], "_icd_ai_de_xuat": ["code3"] }'
   ].join('\n');
@@ -403,15 +435,14 @@ function parseGeminiText(text) {
   return JSON.parse(cleaned);
 }
 
-function callGemini(base64Pdf, apiKey, model) {
+function callGemini(pageList, apiKey, model) {
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(apiKey);
+  var parts = [{ text: buildPrompt() }];
+  pageList.forEach(function (pg) {
+    parts.push({ inline_data: { mime_type: pg.mimeType, data: pg.base64 } });
+  });
   var payload = {
-    contents: [{
-      parts: [
-        { text: buildPrompt() },
-        { inline_data: { mime_type: 'application/pdf', data: base64Pdf } }
-      ]
-    }],
+    contents: [{ parts: parts }],
     generationConfig: { temperature: 0, responseMimeType: 'application/json' }
   };
   return fetch(url, {
@@ -434,24 +465,64 @@ function callGemini(base64Pdf, apiKey, model) {
 // 6) XỬ LÝ UPLOAD
 // ============================================================
 
-function handleFiles(fileList) {
+// CamScanner đôi khi xuất MỖI TRANG thành 1 file PDF riêng (ví dụ "... - Trang 3.pdf")
+// thay vì gộp cả phiếu vào 1 file. Hàm này tự nhận diện và gộp các file cùng tên gốc,
+// khác số trang, lại thành 1 bệnh nhân — để AI đọc đủ cả phiếu thay vì chỉ 1 trang lẻ.
+var PAGE_FILENAME_REGEX = /^(.*?)[\s_-]*trang[\s_-]*(\d+)\s*\.pdf$/i;
+
+function groupFilesByPatient(fileList) {
   var files = Array.prototype.slice.call(fileList).filter(function (f) { return f.type === 'application/pdf'; });
+  var groups = {}; // key -> [{file, pageNum}]
+  var order = []; // giữ đúng thứ tự nhóm xuất hiện đầu tiên
+  var singleCounter = 0;
+
   files.forEach(function (file) {
+    var m = file.name.match(PAGE_FILENAME_REGEX);
+    var key = m ? ('p:' + m[1].trim().toLowerCase()) : ('s:' + (singleCounter++));
+    if (!groups[key]) { groups[key] = []; order.push(key); }
+    groups[key].push({ file: file, pageNum: m ? parseInt(m[2], 10) : 1 });
+  });
+
+  return order.map(function (key) {
+    var arr = groups[key].slice().sort(function (a, b) { return a.pageNum - b.pageNum; });
+    var isMultiPage = arr.length > 1;
+    var label = isMultiPage
+      ? (arr[0].file.name.replace(PAGE_FILENAME_REGEX, '$1').trim() + ' (' + arr.length + ' trang gộp)')
+      : arr[0].file.name;
+    return { label: label, files: arr.map(function (x) { return x.file; }) };
+  });
+}
+
+function handleFiles(fileList) {
+  var groups = groupFilesByPatient(fileList);
+  groups.forEach(function (group) {
     var patient = {
-      id: NEXT_ID++, fileName: file.name, blobUrl: URL.createObjectURL(file),
-      base64: null, status: 'processing', data: {}, canXacNhan: [], icdAiDeXuat: [], errorMsg: ''
+      id: NEXT_ID++, fileName: group.label, pages: [],
+      status: 'processing', data: {}, canXacNhan: [], icdAiDeXuat: [], errorMsg: ''
     };
     STATE.patients.push(patient);
     renderTable();
-    fileToBase64(file).then(function (b64) {
-      patient.base64 = b64;
+
+    // Tách TỪNG FILE trong nhóm thành ảnh từng trang, rồi nối các trang lại theo đúng thứ tự
+    // file (đã sắp theo "Trang N" ở groupFilesByPatient) — 1 nhóm có thể vừa gồm nhiều file
+    // "Trang N.pdf" (mỗi file 1 trang) VỪA có file nhiều trang gộp sẵn, đều xử lý được như nhau.
+    var chain = group.files.reduce(function (p, file) {
+      return p.then(function (acc) {
+        return pdfFileToPageImages(file).then(function (imgs) { return acc.concat(imgs); });
+      });
+    }, Promise.resolve([]));
+
+    chain.then(function (allPages) {
+      patient.pages = allPages;
+      if (!allPages.length) throw new Error('Không tách được trang nào từ file PDF này.');
       if (!STATE.geminiKey) {
         patient.status = 'error';
         patient.errorMsg = 'Chưa cấu hình Gemini API key (mục Cài đặt).';
         renderTable();
         return;
       }
-      return callGemini(b64, STATE.geminiKey, STATE.model).then(function (json) {
+      renderTable(); // cập nhật ngay để anh thấy số trang đã tách xong trong lúc chờ Gemini
+      return callGemini(allPages, STATE.geminiKey, STATE.model).then(function (json) {
         patient.canXacNhan = json._can_xac_nhan || [];
         patient.icdAiDeXuat = json._icd_ai_de_xuat || [];
         delete json._can_xac_nhan;
@@ -459,11 +530,11 @@ function handleFiles(fileList) {
         patient.data = applyBusinessRules(json);
         patient.status = 'pending';
         renderTable();
-      }).catch(function (err) {
-        patient.status = 'error';
-        patient.errorMsg = String(err.message || err);
-        renderTable();
       });
+    }).catch(function (err) {
+      patient.status = 'error';
+      patient.errorMsg = String(err.message || err);
+      renderTable();
     });
   });
 }
@@ -633,10 +704,23 @@ function renderClinicalTable(data, warnSet) {
   return html;
 }
 
+function renderPdfPager(p, activeIndex) {
+  var pager = document.getElementById('pdfPager');
+  document.getElementById('pdfFrame').src = p.pages[activeIndex].blobUrl;
+  if (p.pages.length <= 1) { pager.innerHTML = ''; pager.style.display = 'none'; return; }
+  pager.style.display = 'flex';
+  pager.innerHTML = p.pages.map(function (pg, i) {
+    return '<button type="button" class="pdf-pager-btn' + (i === activeIndex ? ' active' : '') + '" data-page-idx="' + i + '">Trang ' + (i + 1) + '</button>';
+  }).join('');
+  pager.querySelectorAll('[data-page-idx]').forEach(function (btn) {
+    btn.addEventListener('click', function () { renderPdfPager(p, Number(btn.dataset.pageIdx)); });
+  });
+}
+
 function openDetail(id) {
   var p = findPatient(id);
   if (!p) return;
-  document.getElementById('pdfFrame').src = p.blobUrl;
+  renderPdfPager(p, 0);
   var warnSet = new Set(p.canXacNhan || []);
   p.data.__icdAi = p.icdAiDeXuat || [];
 
@@ -864,7 +948,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildPrompt: buildPrompt, parseGeminiText: parseGeminiText,
     SPECIALTIES: SPECIALTIES, TIEN_SU_BAN_THAN_FIELDS: TIEN_SU_BAN_THAN_FIELDS,
     HANH_CHINH_FIELDS: HANH_CHINH_FIELDS, buildExportRecord: buildExportRecord,
-    TIEN_SU_GIA_DINH_OPTIONS: TIEN_SU_GIA_DINH_OPTIONS
+    TIEN_SU_GIA_DINH_OPTIONS: TIEN_SU_GIA_DINH_OPTIONS, groupFilesByPatient: groupFilesByPatient
   };
 }
 </script>
