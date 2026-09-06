@@ -51,6 +51,10 @@
   .form-type-toggle{display:flex;gap:8px;}
   .form-type-btn{flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:#5f6368;}
   .form-type-btn.active{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .access-gate{position:fixed;inset:0;background:#f4f6f8;z-index:2000;display:flex;align-items:center;justify-content:center;}
+  .access-gate.unlocked{display:none;}
+  .access-gate-box{background:#fff;border:1px solid var(--border);border-radius:10px;padding:26px 28px;width:260px;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.08);}
+  .access-gate-box input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-align:center;}
   .field-hint{font-size:11px;color:#92610a;margin-top:2px;}
   .tag-ai{display:inline-block;background:var(--ai);border:1px solid var(--ai-border);color:#174ea6;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:6px;}
   .section-title{font-size:14px;font-weight:700;margin:18px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--brand);color:var(--brand-dark);}
@@ -89,6 +93,17 @@
 </style>
 </head>
 <body>
+
+<div id="accessGate" class="access-gate">
+  <div class="access-gate-box">
+    <div style="font-size:32px;margin-bottom:6px;">🔒</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:4px;">Nhập mã để vào</div>
+    <div style="font-size:12px;color:#5f6368;margin-bottom:14px;">Trang nội bộ trạm y tế — chỉ chặn người vô tình vào nhầm link.</div>
+    <input type="password" id="accessGateInput" placeholder="Mã truy cập" autocomplete="off">
+    <button type="button" class="btn" id="accessGateBtn" style="width:100%;margin-top:10px;">Vào</button>
+    <div id="accessGateError" style="color:#c0392b;font-size:12px;margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
 
 <header>
   <h1>🩺 OCR Phiếu khám sức khỏe — Mẫu 03</h1>
@@ -293,7 +308,7 @@ var THINH_LUC_ROWS_M4 = [
 // Kết luận M4: KHÔNG có "Loại khám" (loai_kham) — mẫu người cao tuổi không phân biệt khám
 // tuyển/định kỳ như M3.
 var KET_LUAN_FIELDS_M4 = [
-  {code:'danh_muc_de_nghi', label:'Đề nghị', type:'select-dynamic', source:'deNghi'},
+  {code:'danh_muc_de_nghi', label:'Đề nghị', type:'select', options:DE_NGHI_OPTIONS},
   {code:'de_nghi', label:'Ghi rõ đề nghị', type:'text', optional:true}
 ];
 
@@ -387,9 +402,21 @@ var MAT_KHUCXA_GROUPS = [
   { label: 'Mắt trái (MT)', docau: 'mat_docau_mt', dotru: 'mat_dotru_mt', truc: 'mat_truc_mt' }
 ];
 
+// Đề nghị (Kết luận): danh mục CỐ ĐỊNH đúng 5 giá trị thật của hệ thống (đối chiếu tay với ảnh
+// chụp dropdown thật) — KHÔNG lấy từ sheet "DynamicData" nữa (từng bị lẫn giá trị rác như
+// "Giảm cân" trong đó dù không phải lựa chọn hợp lệ), giống cách "Đối tượng khám" dùng danh mục
+// cố định thay vì phụ thuộc dữ liệu tự do trên sheet.
+var DE_NGHI_OPTIONS = [
+  'Bình thường, hẹn khám định kỳ lần sau',
+  'Có yếu tố nguy cơ, cần theo dõi thêm',
+  'Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ',
+  'Chuyển tuyến, khám chuyên khoa',
+  'Khác'
+];
+
 var KET_LUAN_FIELDS = [
   {code:'loai_kham', label:'Loại khám', type:'select', options:[{v:1,t:'Khám Tuyển'},{v:2,t:'Khám Định kỳ'}]},
-  {code:'danh_muc_de_nghi', label:'Đề nghị', type:'select-dynamic', source:'deNghi'},
+  {code:'danh_muc_de_nghi', label:'Đề nghị', type:'select', options:DE_NGHI_OPTIONS},
   {code:'de_nghi', label:'Ghi rõ đề nghị', type:'text', optional:true}
 ];
 
@@ -562,6 +589,13 @@ function applyBusinessRules(data, formType) {
     // "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi) — an toàn để mặc định khi trống,
     // khác với M3 (danh mục có nhiều mã hợp lý, không được đoán).
     if (!data.doi_tuong_kham) data.doi_tuong_kham = 5;
+    // Khám thính lực: mục hay bị viết khó đọc — mặc định khoảng cách chuẩn khi thính lực bình
+    // thường (5m nói thường, 0.5m nói thầm) nếu Gemini vẫn trả về rỗng dù đã có hướng dẫn trong
+    // prompt (rule #1). Đây là lưới an toàn phía client, không ép giá trị nếu đã có sẵn.
+    if (!data.taitrai_noithuong) data.taitrai_noithuong = 5;
+    if (!data.taiphai_noithuong) data.taiphai_noithuong = 5;
+    if (!data.taitrai_noitham) data.taitrai_noitham = 0.5;
+    if (!data.taiphai_noitham) data.taiphai_noitham = 0.5;
   } else {
     if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
   }
@@ -647,7 +681,7 @@ function buildFieldListText(formType) {
 function buildPrompt(formType) {
   var tenMau = formType === 'M4' ? 'Mẫu 04 - Giấy khám sức khỏe người cao tuổi' : 'Mẫu 03 - Giấy khám sức khỏe và khám sức khỏe định kỳ';
   var rule1 = formType === 'M4'
-    ? '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; doi_tuong_kham = mã "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi, luôn có mã này trừ khi phiếu ghi rõ thêm đối tượng đặc biệt khác thì có thể thêm, không thay thế); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Mẫu 04 KHÔNG có trường "Loại khám", không cần điền. Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.'
+    ? '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; doi_tuong_kham = mã "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi, luôn có mã này trừ khi phiếu ghi rõ thêm đối tượng đặc biệt khác thì có thể thêm, không thay thế); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Với 4 trường khám thính lực (taitrai_noithuong, taiphai_noithuong, taitrai_noitham, taiphai_noitham): mục này bác sĩ thường viết rất khó đọc, nên nếu chữ viết tay không rõ ràng hoặc không chắc chắn, mặc định taitrai_noithuong = 5, taiphai_noithuong = 5, taitrai_noitham = 0.5, taiphai_noitham = 0.5 (khoảng cách chuẩn khi thính lực bình thường) — CHỈ ghi số khác nếu đọc được RÕ RÀNG 1 con số khác hẳn trên phiếu, không cần liệt kê vào "_can_xac_nhan" khi dùng mặc định này (khác với các trường khác). Mẫu 04 KHÔNG có trường "Loại khám", không cần điền. Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.'
     : '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; loai_kham = 2 (Khám Định Kỳ); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.';
   return [
     'Bạn đang đọc 1 file PDF scan tay "' + tenMau + '" (Thông tư Bộ Y tế Việt Nam).',
@@ -1074,12 +1108,18 @@ function initComboEvents() {
       closeCombo();
     }
   });
-  document.addEventListener('mousedown', function (e) {
-    if (comboDropdownEl().contains(e.target)) e.preventDefault(); // giữ focus ô input, không cho blur trước khi click
-  });
-  document.addEventListener('click', function (e) {
+  // Dùng "pointerdown" (chạy trước cả mousedown/touchstart, gộp chung chuột+chạm) và xử lý
+  // CHỌN NGAY trong sự kiện này thay vì đợi "click" — trên điện thoại, khi ô input đang mở
+  // bàn phím ảo, chạm vào gợi ý bên dưới thường bị hệ điều hành/trình duyệt "nuốt" mất
+  // thành thao tác đóng bàn phím, khiến sự kiện "click" không bao giờ tới được nữa (đây là lỗi
+  // "bảng có ra nhưng không nhấn chọn được" khi dùng trên điện thoại). preventDefault() ở đây
+  // vừa giữ focus ô input (không bị blur trước khi chọn xong), vừa đảm bảo chọn được ngay cả
+  // khi "click" sau đó không fire.
+  document.addEventListener('pointerdown', function (e) {
     var dd = comboDropdownEl();
-    if (dd.contains(e.target) && e.target.dataset && e.target.dataset.value !== undefined && STATE.comboActiveInput) {
+    if (!dd.contains(e.target)) return;
+    e.preventDefault();
+    if (e.target.dataset && e.target.dataset.value !== undefined && STATE.comboActiveInput) {
       selectComboValue(STATE.comboActiveInput, e.target.dataset.value);
     }
   });
@@ -1556,7 +1596,42 @@ function downloadBase64File(base64, fileName) {
 // 10) KHỞI TẠO / GẮN SỰ KIỆN GIAO DIỆN
 // ============================================================
 
+// ============================================================
+// 0) CHẶN NGƯỜI VÔ TÌNH VÀO NHẦM LINK (mã lớp frontend — CHỈ để chặn nhầm lẫn, KHÔNG phải
+// bảo mật thật: ai xem View Source cũng thấy được mã, giống cách ghiso.html của app Nhà Trọ
+// đang làm với PIN 187 — không dùng cho dữ liệu cần bảo mật thật sự).
+// ============================================================
+var ACCESS_CODE = 'lx';
+
+function initAccessGate() {
+  var gate = document.getElementById('accessGate');
+  var input = document.getElementById('accessGateInput');
+  var btn = document.getElementById('accessGateBtn');
+  var errEl = document.getElementById('accessGateError');
+
+  var alreadyOk = false;
+  try { alreadyOk = localStorage.getItem('ocr_access_ok') === '1'; } catch (e) {}
+  if (alreadyOk) { gate.classList.add('unlocked'); return; }
+
+  function tryUnlock() {
+    if (input.value.trim().toLowerCase() === ACCESS_CODE) {
+      try { localStorage.setItem('ocr_access_ok', '1'); } catch (e) {}
+      gate.classList.add('unlocked');
+    } else {
+      errEl.textContent = 'Sai mã, thử lại.';
+      input.value = '';
+      input.focus();
+    }
+  }
+
+  btn.addEventListener('click', tryUnlock);
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') tryUnlock(); });
+  input.focus();
+}
+
 function initUI() {
+  initAccessGate();
+
   loadSettings();
   document.getElementById('cfgModel').value = STATE.model;
   document.getElementById('cfgGasUrl').value = STATE.gasUrl;
