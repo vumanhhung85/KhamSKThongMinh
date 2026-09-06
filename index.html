@@ -48,6 +48,9 @@
   .combo-dropdown div:hover,.combo-dropdown div.active{background:var(--ai);}
   .combo-dropdown .combo-empty{padding:7px 10px;font-size:13px;color:#9aa0a6;font-style:italic;cursor:default;}
   .combo-dropdown .combo-empty:hover{background:transparent;}
+  .form-type-toggle{display:flex;gap:8px;}
+  .form-type-btn{flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:#5f6368;}
+  .form-type-btn.active{background:var(--brand);border-color:var(--brand);color:#fff;}
   .field-hint{font-size:11px;color:#92610a;margin-top:2px;}
   .tag-ai{display:inline-block;background:var(--ai);border:1px solid var(--ai-border);color:#174ea6;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:6px;}
   .section-title{font-size:14px;font-weight:700;margin:18px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--brand);color:var(--brand-dark);}
@@ -113,6 +116,17 @@
   </div>
 
   <div class="card">
+    <div class="field" style="max-width:460px;">
+      <label>Loại phiếu đang nhập</label>
+      <div class="form-type-toggle" id="formTypeToggle">
+        <button type="button" class="form-type-btn active" data-form-type="M3">Mẫu 03 (khám sức khỏe)</button>
+        <button type="button" class="form-type-btn" data-form-type="M4">Mẫu 04 (người cao tuổi)</button>
+      </div>
+      <div class="field-hint">Chọn đúng loại TRƯỚC khi thả file PDF — quyết định bộ câu hỏi AI đọc và sheet mẫu xuất Excel. Phiếu đã tạo giữ nguyên loại lúc tạo dù đổi lựa chọn này sau đó.</div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="dropzone" id="dropzone">
       <div id="dropzoneText">📄 Kéo-thả nhiều file PDF vào đây, hoặc bấm để chọn (mỗi bệnh nhân 1 file)</div>
       <input type="file" id="fileInput" accept="application/pdf" multiple>
@@ -171,15 +185,15 @@ var HANH_CHINH_FIELDS = [
   {code:'ngay_kham', label:'Ngày khám', type:'text', hint:'dd/MM/yyyy'},
   {code:'doi_tuong_kham', label:'Đối tượng khám', type:'select-doituong', hint:'Bắt buộc chọn tay nếu phiếu không ghi rõ — danh mục không có mục "Khác"'},
   {code:'dia_diem_kham', label:'Địa điểm khám', type:'select', options:['Cơ Sở Khám Chữa Bệnh','Khám Lưu Động','Trạm Y Tế','KSK Tại Nhà','Trường Học']},
-  {code:'dinh_danh_ca_nhan', label:'Số CCCD/Định danh', type:'text'},
+  {code:'dinh_danh_ca_nhan', label:'Số CCCD/Định danh', type:'text', hint:'chỉ ghi đúng số đọc được trên phiếu, KHÔNG suy đoán số theo nơi khám/nơi làm việc'},
   {code:'ho_ten', label:'Họ và tên', type:'text', hint:'luôn viết IN HOA toàn bộ, có dấu'},
   {code:'ngay_sinh', label:'Ngày sinh', type:'text', hint:'dd/MM/yyyy'},
   {code:'gioi_tinh', label:'Giới tính', type:'select', options:[{v:1,t:'Nam'},{v:2,t:'Nữ'},{v:3,t:'Chưa xác định'}]},
   {code:'dan_toc_id', label:'Dân tộc', type:'select-dynamic', source:'danToc'},
   {code:'nhom_mau_id', label:'Nhóm máu', type:'select', options:['','A','B','O','AB'], optional:true},
   {code:'yeu_to_nhom_mau_id', label:'Yếu tố Rh', type:'select', options:[{v:'',t:''},{v:1,t:'Rh-'},{v:2,t:'Rh+'}], optional:true},
-  {code:'the_bhyt', label:'Số thẻ BHYT', type:'text', optional:true},
-  {code:'sdt', label:'Số điện thoại', type:'text'},
+  {code:'the_bhyt', label:'Số thẻ BHYT', type:'text', optional:true, hint:'chỉ ghi đúng ký tự đọc được (cả 2 chữ cái đầu lẫn dãy số), KHÔNG tự sửa cho khớp định dạng "đẹp"'},
+  {code:'sdt', label:'Số điện thoại', type:'text', hint:'chỉ ghi đúng số đọc được trên phiếu, KHÔNG tự đoán/sửa số cho ra số điện thoại "nghe hợp lý"'},
   {code:'dia_chi_hien_tai', label:'Chỗ ở hiện tại', type:'text'},
   {code:'city_id', label:'Tỉnh/Thành phố', type:'select-dynamic', source:'tinh', searchable:true},
   {code:'ward_id', label:'Phường/Xã', type:'select-ward', searchable:true},
@@ -190,6 +204,103 @@ var HANH_CHINH_FIELDS = [
   {code:'hinh_thuc_chi_tra_khamsk_chi_tiet', label:'Hình thức khám (nếu NSNN hỗ trợ)', type:'select-dynamic', source:'hinhThucKham', optional:true},
   {code:'nguonkhac_ghiro', label:'Ghi rõ nguồn khác', type:'text', optional:true}
 ];
+
+// ============================================================
+// 1b) CÁC TRƯỜNG RIÊNG CHO MẪU 04 (NGƯỜI CAO TUỔI)
+// ------------------------------------------------------------
+// Lấy trực tiếp từ file mẫu M4 gốc (dòng 5 — dòng tên trường kỹ thuật ẩn của sheet
+// ThongTinHanhChinh), không tự suy đoán. Những phần GIỐNG M3 (Tiền sử bản thân 22 mục, Câu
+// hỏi khác/CAU_HOI_KHAC_FIELDS, Sản khoa/Phụ khoa/Mắt/Khúc xạ/TMH/RHM, Huyết học/Sinh hóa/Nước
+// tiểu/Chẩn đoán hình ảnh, danh mục Tiền sử gia đình 9 mục) dùng LẠI nguyên các hằng số ở trên,
+// không lặp lại ở đây.
+// ============================================================
+
+// Hành chính M4 = hành chính M3 + thêm "Nơi công tác xã/phường" (M4 không có cột kỹ thuật
+// cho "Nơi công tác Tỉnh" trong file mẫu nên không thêm ô đó); "Hình thức khám" bắt buộc (*)
+// ở M4 (khác M3 — chỉ bắt buộc khi có NSNN hỗ trợ).
+var HANH_CHINH_FIELDS_M4 = [
+  {code:'ngay_kham', label:'Ngày khám', type:'text', hint:'dd/MM/yyyy'},
+  {code:'doi_tuong_kham', label:'Đối tượng khám', type:'select-doituong', hint:'Mẫu 04 bắt buộc luôn có "Người cao tuổi" — nếu phiếu không ghi rõ đối tượng đặc biệt nào khác, để mặc định "Người cao tuổi"'},
+  {code:'dia_diem_kham', label:'Địa điểm khám', type:'select', options:['Cơ Sở Khám Chữa Bệnh','Khám Lưu Động','Trạm Y Tế','KSK Tại Nhà','Trường Học']},
+  {code:'dinh_danh_ca_nhan', label:'Số CCCD/Định danh', type:'text', hint:'chỉ ghi đúng số đọc được trên phiếu, KHÔNG suy đoán số theo nơi khám/nơi làm việc'},
+  {code:'ho_ten', label:'Họ và tên', type:'text', hint:'luôn viết IN HOA toàn bộ, có dấu'},
+  {code:'ngay_sinh', label:'Ngày sinh', type:'text', hint:'dd/MM/yyyy'},
+  {code:'gioi_tinh', label:'Giới tính', type:'select', options:[{v:1,t:'Nam'},{v:2,t:'Nữ'},{v:3,t:'Chưa xác định'}]},
+  {code:'dan_toc_id', label:'Dân tộc', type:'select-dynamic', source:'danToc'},
+  {code:'nhom_mau_id', label:'Nhóm máu', type:'select', options:['','A','B','O','AB'], optional:true},
+  {code:'yeu_to_nhom_mau_id', label:'Yếu tố Rh', type:'select', options:[{v:'',t:''},{v:1,t:'Rh-'},{v:2,t:'Rh+'}], optional:true},
+  {code:'the_bhyt', label:'Số thẻ BHYT', type:'text', optional:true, hint:'chỉ ghi đúng ký tự đọc được (cả 2 chữ cái đầu lẫn dãy số), KHÔNG tự sửa cho khớp định dạng "đẹp"'},
+  {code:'sdt', label:'Số điện thoại', type:'text', hint:'chỉ ghi đúng số đọc được trên phiếu, KHÔNG tự đoán/sửa số cho ra số điện thoại "nghe hợp lý"'},
+  {code:'dia_chi_hien_tai', label:'Chỗ ở hiện tại', type:'text'},
+  {code:'city_id', label:'Tỉnh/Thành phố', type:'select-dynamic', source:'tinh', searchable:true},
+  {code:'ward_id', label:'Phường/Xã', type:'select-ward', searchable:true},
+  {code:'nghenghiep_code', label:'Nghề nghiệp', type:'select-dynamic', source:'ngheNghiep', searchable:true},
+  {code:'noi_cong_tac', label:'Nơi làm việc/công tác', type:'text', optional:true},
+  {code:'noi_cong_tac_xa_phuong', label:'Phường/xã nơi công tác', type:'text', optional:true},
+  {code:'ly_do_kham', label:'Lý do khám sức khỏe', type:'text', optional:true},
+  {code:'hinh_thuc_chi_tra_khamsk', label:'Hình thức chi trả', type:'select-dynamic', source:'hinhThucChiTra'},
+  {code:'hinh_thuc_chi_tra_khamsk_chi_tiet', label:'Hình thức khám', type:'select-dynamic', source:'hinhThucKham'},
+  {code:'nguonkhac_ghiro', label:'Ghi rõ nguồn khác', type:'text', optional:true}
+];
+
+// Khối tiền sử gia đình tim mạch/chuyển hóa — CHỈ có ở M4 (7 mục cố định + 1 cổng Có/Không,
+// khác hẳn khối 9-bệnh dạng danh mục ID dùng chung với M3 ở TIEN_SU_GIA_DINH_OPTIONS/Y-Z).
+var GIADINH_TIMMACH_FIELDS_M4 = [
+  {code:'tsbgd_timmach', label:'Tim mạch sớm (nam <55 tuổi, nữ <65 tuổi)'},
+  {code:'tsbgd_tanghuyetap', label:'Tăng huyết áp'},
+  {code:'tsbgd_daithaoduong', label:'Đái tháo đường'},
+  {code:'tsbgd_phoi', label:'Phổi tắc nghẽn mạn tính'},
+  {code:'tsbgd_henphequan', label:'Hen phế quản/các bệnh dị ứng'},
+  {code:'tsbgd_tramcam', label:'Trầm cảm, lo âu'},
+  {code:'tsbgd_ungthu', label:'Ung thư'}
+];
+
+// Khám thể lực M4: thêm Cân nặng 1 năm trước + Vòng bụng (tầm soát sụt cân/nguy cơ tim mạch
+// ở người già) so với M3, thứ tự cột trong sheet mẫu cũng khác M3 (nhịp thở dời xuống cuối).
+var THE_LUC_FIELDS_M4 = [
+  {code:'chieucao', label:'Chiều cao (cm)', type:'number'},
+  {code:'cannang', label:'Cân nặng hiện tại (kg)', type:'number'},
+  {code:'cannang_namtruoc', label:'Cân nặng 1 năm trước (kg)', type:'number', optional:true},
+  {code:'vongbung', label:'Vòng bụng (cm)', type:'number', optional:true},
+  {code:'mach', label:'Mạch (lần/phút)', type:'number'},
+  {code:'huyetaptamthu', label:'Huyết áp tâm thu', type:'number'},
+  {code:'huyetaptamtruong', label:'Huyết áp tâm trương', type:'number'},
+  {code:'nhiptho', label:'Nhịp thở (lần/phút)', type:'number'},
+  {code:'phanloai', label:'Phân loại thể lực chung', type:'select', options:[1,2,3,4,5]}
+];
+
+// Khám lâm sàng M4: GỘP 8 mục nội khoa của M3 (Tuần hoàn/Hô hấp/Tiêu hóa/Thận-Tiết niệu/Nội
+// tiết/Cơ-Xương-Khớp/Thần kinh/Tâm thần) thành DUY NHẤT 1 mục "Nội khoa" — đúng theo mẫu gốc
+// (anh Hưng đã xác nhận, không phải thiếu sót khi soạn field).
+var SPECIALTIES_M4 = [
+  {label:'Nội khoa', ck:'noikhoa_chuaphathienbatthuong', sobo:'noikhoa_chandoansobo_icd', xacdinh:'noikhoa_chandoanxacdinh_icd', phanloai:'noikhoa_phanloai'},
+  {label:'Ngoại khoa', ck:'ngoaikhoa_chuaphathienbatthuong', sobo:'ngoaikhoa_chandoansobo_icd', xacdinh:'ngoaikhoa_chandoanxacdinh_icd', phanloai:'ngoaikhoa_phanloai'},
+  {label:'Da liễu', ck:'dalieu_chuaphathienbatthuong', sobo:'dalieu_chandoansobo_icd', xacdinh:'dalieu_chandoanxacdinh_icd', phanloai:'dalieu_phanloai'},
+  {label:'Sản khoa', tuchoi:'sankhoa_tuchoikham', ck:'sankhoa_chuaphathienbatthuong', sobo:'sankhoa_chandoansobo_icd', xacdinh:'sankhoa_chandoanxacdinh_icd', phanloai:'sankhoa_phanloai'},
+  {label:'Phụ khoa', tuchoi:'phukhoa_tuchoikham', ck:'phukhoa_chuaphathienbatthuong', sobo:'phukhoa_chandoansobo_icd', xacdinh:'phukhoa_chandoanxacdinh_icd', phanloai:'phukhoa_phanloai'},
+  {label:'Mắt', ck:'mat_chuaphathienbatthuong', sobo:'mat_chandoansobo_icd', xacdinh:'mat_chandoanxacdinh_icd', phanloai:'mat_phanloai'},
+  {label:'Tai - Mũi - Họng', ck:'tmh_chuaphathienbatthuong', sobo:'tmh_chandoansobo_icd', xacdinh:'tmh_chandoanxacdinh_icd', phanloai:'tmh_phanloai'},
+  {label:'Răng - Hàm - Mặt', ck:'rhm_chuaphathienbatthuong', sobo:'rhm_chandoansobo_icd', xacdinh:'rhm_chandoanxacdinh_icd', phanloai:'rhm_phanloai'}
+];
+
+// Khám thính lực (số liệu đo cụ thể, thang /5m theo quy ước "Nói thường/Nói thầm") — CHỈ có
+// ở M4, M3 không có mục này (đã ghi chú trong hồ sơ dự án trước đây).
+var THINH_LUC_ROWS_M4 = [
+  {label:'Nói thường', trai:'taitrai_noithuong', phai:'taiphai_noithuong'},
+  {label:'Nói thầm', trai:'taitrai_noitham', phai:'taiphai_noitham'}
+];
+
+// Kết luận M4: KHÔNG có "Loại khám" (loai_kham) — mẫu người cao tuổi không phân biệt khám
+// tuyển/định kỳ như M3.
+var KET_LUAN_FIELDS_M4 = [
+  {code:'danh_muc_de_nghi', label:'Đề nghị', type:'select-dynamic', source:'deNghi'},
+  {code:'de_nghi', label:'Ghi rõ đề nghị', type:'text', optional:true}
+];
+
+function getHanhChinhFields(formType) { return formType === 'M4' ? HANH_CHINH_FIELDS_M4 : HANH_CHINH_FIELDS; }
+function getTheLucFields(formType) { return formType === 'M4' ? THE_LUC_FIELDS_M4 : THE_LUC_FIELDS; }
+function getSpecialties(formType) { return formType === 'M4' ? SPECIALTIES_M4 : SPECIALTIES; }
+function getKetLuanFields(formType) { return formType === 'M4' ? KET_LUAN_FIELDS_M4 : KET_LUAN_FIELDS; }
 
 // Tiền sử bệnh gia đình: 9 mục riêng biệt theo đúng sheet "Bệnh Tiền Sử Gia Đình"
 // (đối chiếu với giao diện hệ thống nhập tay — không phải 1 câu Có/Không + ghi chú tự do).
@@ -300,6 +411,28 @@ var FALLBACK_REF = {
     {ma:9,ten:'Người mắc bệnh mạn tính'},{ma:10,ten:'Người sống tại vùng đồng bào dân tộc thiểu số và miền núi'},
     {ma:11,ten:'Người sống tại vùng có điều kiện kinh tế - xã hội khó khăn, đặc biệt khó khăn'},
     {ma:12,ten:'Người sống tại xã đảo'},{ma:13,ten:'Người sống tại đặc khu'},{ma:19,ten:'Nhân khẩu đặc biệt'}
+  ],
+  // Danh mục ICD-10 tham khảo (gợi ý khi gõ ở ô "Chẩn đoán sơ bộ/xác định") — ban đầu mới có vài
+  // mã anh Hưng đã đối chiếu tay với icd.kcb.vn (Thông tư 06/2026/TT-BYT), sẽ bổ sung dần qua sheet
+  // "ICD10" (xem getRefData trong Code.gs) thay vì phải sửa lại index.html mỗi lần thêm mã.
+  icd10: [
+    {ma:'O82', ten:'Mổ lấy thai cho một thai'},
+    {ma:'O82.0', ten:'Mổ lấy thai chủ động'},
+    {ma:'O82.1', ten:'Mổ lấy thai cấp cứu'},
+    {ma:'O82.2', ten:'Mổ lấy thai và cắt bỏ tử cung'},
+    {ma:'O82.8', ten:'Mổ lấy thai khác cho một thai'},
+    {ma:'O82.9', ten:'Mổ lấy thai, không xác định'},
+    {ma:'E66', ten:'Bệnh béo phì'},
+    {ma:'E66.0', ten:'Bệnh béo phì do thừa calo'},
+    {ma:'E66.1', ten:'Bệnh béo phì do thuốc'},
+    {ma:'E66.2', ten:'Bệnh béo phì quá mức với giảm thông khí phế nang'},
+    {ma:'E66.8', ten:'Bệnh béo phì khác'},
+    {ma:'E66.9', ten:'Bệnh béo phì, không xác định'},
+    {ma:'H57', ten:'Rối loạn khác của mắt và/hoặc cấu trúc phụ cận của mắt'},
+    {ma:'H57.0', ten:'Bất thường chức năng đồng tử'},
+    {ma:'H57.1', ten:'Đau nhức mắt'},
+    {ma:'H57.8', ten:'Rối loạn xác định khác của mắt và/hoặc cấu trúc phụ cận của mắt'},
+    {ma:'H57.9', ten:'Rối loạn mắt và/hoặc cấu trúc phụ cận của mắt, không xác định'}
   ]
 };
 
@@ -313,9 +446,10 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbz933WWizph7CoTXR
 
 var STATE = {
   model: 'gemini-3.1-flash-lite', gasUrl: '',
-  refData: null,
-  wardCache: {},
-  patients: [], // {id, fileName, pages:[{base64,mimeType,blobUrl}], status, data:{}, canXacNhan:[], icdAiDeXuat:[], errorMsg}
+  formType: 'M3', // 'M3' | 'M4' — loại phiếu đang chọn để xử lý batch upload tiếp theo
+  refData: { M3: null, M4: null },
+  wardCache: { M3: {}, M4: {} },
+  patients: [], // {id, fileName, pages:[{base64,mimeType,blobUrl}], status, formType, data:{}, canXacNhan:[], icdAiDeXuat:[], errorMsg}
   comboLists: {}, comboActiveInput: null, comboActiveIndex: -1 // cho combobox tìm kiếm (Nghề nghiệp/Tỉnh/Phường-Xã)
 };
 
@@ -333,7 +467,16 @@ function loadSettings() {
   try {
     STATE.model = localStorage.getItem('ocr_gemini_model') || 'gemini-3.1-flash-lite';
     STATE.gasUrl = localStorage.getItem('ocr_gas_url') || DEFAULT_GAS_URL;
+    STATE.formType = localStorage.getItem('ocr_form_type') || 'M3';
   } catch (e) { /* localStorage có thể bị chặn (chế độ ẩn danh) */ }
+}
+
+function setFormType(formType) {
+  STATE.formType = formType;
+  try { localStorage.setItem('ocr_form_type', formType); } catch (e) {}
+  document.querySelectorAll('.form-type-btn').forEach(function (btn) {
+    btn.classList.toggle('active', btn.dataset.formType === formType);
+  });
 }
 
 function saveSettings(model, gasUrl) {
@@ -406,7 +549,7 @@ function normalizeSelectObjectFields(data) {
   return data;
 }
 
-function applyBusinessRules(data) {
+function applyBusinessRules(data, formType) {
   data = normalizeSelectObjectFields(data || {});
   if (data.ho_ten) data.ho_ten = String(data.ho_ten).toUpperCase();
   if (!data.city_id) data.city_id = 'Thành Phố Hồ Chí Minh';
@@ -414,15 +557,22 @@ function applyBusinessRules(data) {
   if (!data.dia_diem_kham) data.dia_diem_kham = 'Trạm Y Tế';
   if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Nguồn khác';
   if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Khám Theo Hợp Đồng';
-  if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
+  if (formType === 'M4') {
+    // M4 (người cao tuổi) không có trường "Loại khám"; ngược lại đối tượng khám luôn có mã
+    // "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi) — an toàn để mặc định khi trống,
+    // khác với M3 (danh mục có nhiều mã hợp lý, không được đoán).
+    if (!data.doi_tuong_kham) data.doi_tuong_kham = 5;
+  } else {
+    if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
+  }
   if (!data.danh_muc_de_nghi) data.danh_muc_de_nghi = 'Bình thường, hẹn khám định kỳ lần sau';
   if (!data.de_nghi) data.de_nghi = 'Bình thường, hẹn khám lần sau';
   if (!data.ly_do_kham) data.ly_do_kham = 'Lập Hồ Sơ Khám Sức khỏe Điện tử';
-  // Đối tượng khám: KHÔNG tự đoán — danh mục thật không có mục "Khác", chọn sai mã khó phát
-  // hiện lại sau này. Nếu Gemini không đọc được, phải để trống và luôn nằm trong _can_xac_nhan
-  // (ép hiện cảnh báo, buộc chọn tay lúc duyệt) — xem thêm rule #4 trong buildPrompt().
+  // Đối tượng khám (M3): KHÔNG tự đoán — danh mục thật không có mục "Khác", chọn sai mã khó
+  // phát hiện lại sau này. Nếu Gemini không đọc được, phải để trống và luôn nằm trong
+  // _can_xac_nhan (ép hiện cảnh báo, buộc chọn tay lúc duyệt) — xem thêm rule #4 trong buildPrompt().
   if (!Array.isArray(data.giadinh_benh_ids)) data.giadinh_benh_ids = [];
-  SPECIALTIES.forEach(function (sp) {
+  getSpecialties(formType).forEach(function (sp) {
     if (String(data[sp.ck]) === '1') data[sp.phanloai] = 1;
   });
   return data;
@@ -437,7 +587,7 @@ function setAllTienSuKhong(data) {
 // 4) PROMPT GEMINI
 // ============================================================
 
-function buildFieldListText() {
+function buildFieldListText(formType) {
   var lines = [];
   function addSection(title, fields) {
     lines.push('### ' + title);
@@ -454,23 +604,34 @@ function buildFieldListText() {
       }
       lines.push('- ' + f.code + ': ' + f.label + (f.hint ? ' (' + f.hint + ')' : '') + opt);
       if (f.code === 'doi_tuong_kham') {
-        var dtList = (STATE.refData && STATE.refData.doiTuong) || FALLBACK_REF.doiTuong;
+        var dtList = (STATE.refData[formType] && STATE.refData[formType].doiTuong) || FALLBACK_REF.doiTuong;
         lines.push('  Danh mục mã hợp lệ (CHỈ được chọn 1 trong các mã này, KHÔNG tự bịa mã khác): ' + dtList.map(function (d) { return d.ma + '=' + d.ten; }).join(', '));
       }
     });
   }
-  addSection('Hành chính', HANH_CHINH_FIELDS);
+  addSection('Hành chính', getHanhChinhFields(formType));
   lines.push('### Tiền sử bệnh của gia đình (ông/bà/bố/mẹ/anh chị em ruột)');
   lines.push('- giadinh_benh_ids: mảng số nguyên, map tên bệnh được ghi (nếu "Có" được tick) vào đúng các mã sau, có thể chọn nhiều mã: ' + TIEN_SU_GIA_DINH_OPTIONS.map(function (o) { return o.id + '=' + o.label; }).join(', ') + '. Nếu "Không" được tick hoặc không ghi gì, trả về mảng rỗng [].');
+  if (formType === 'M4') {
+    lines.push('### Tiền sử bệnh tim mạch/chuyển hóa của gia đình (chỉ có ở Mẫu 04)');
+    lines.push('- tsb_giadinh: 1 nếu có ít nhất 1 mục dưới đây được tick "Có", 0 nếu tất cả đều "Không"/không ghi gì.');
+    GIADINH_TIMMACH_FIELDS_M4.forEach(function (f) { lines.push('- ' + f.code + ': ' + f.label + ' (1 = Có, 0 = Không)'); });
+  }
+  addSection('Câu hỏi khác (1 = Có, 0 = Không)', CAU_HOI_KHAC_FIELDS);
   lines.push('### Tiền sử bản thân (mỗi mục: 1 = Có bệnh/tật, 0 = Không)');
   TIEN_SU_BAN_THAN_FIELDS.forEach(function (f) { lines.push('- ' + f.code + ': ' + f.label); });
-  addSection('Câu hỏi khác (1 = Có, 0 = Không)', CAU_HOI_KHAC_FIELDS);
-  addSection('Khám thể lực', THE_LUC_FIELDS);
+  addSection('Khám thể lực', getTheLucFields(formType));
   lines.push('### Khám lâm sàng theo chuyên khoa (với mỗi chuyên khoa: ck = 1 nếu "chưa phát hiện bất thường" được tick, 0 nếu có bất thường; sobo/xacdinh = mã ICD chữ viết tay nếu có; phanloai = 1-5)');
-  SPECIALTIES.forEach(function (sp) {
+  getSpecialties(formType).forEach(function (sp) {
     var extra = sp.tuchoi ? (', ' + sp.tuchoi + ' (1 nếu "từ chối khám" được tick, 0 nếu không)') : '';
     lines.push('- ' + sp.label + ': ' + sp.ck + ', ' + sp.sobo + ', ' + sp.xacdinh + ', ' + sp.phanloai + extra);
   });
+  if (formType === 'M4') {
+    lines.push('### Khám thính lực (chỉ có ở Mẫu 04), đơn vị mét, để trống nếu form không ghi');
+    THINH_LUC_ROWS_M4.forEach(function (row) {
+      lines.push('- ' + row.trai + ', ' + row.phai + ': "' + row.label + '" — tai trái và tai phải');
+    });
+  }
   lines.push('### Khám thị lực (phần "Mắt"), mỗi ô là số nguyên trên thang /10, để trống nếu form không ghi');
   MAT_THI_LUC_ROWS.forEach(function (row) {
     lines.push('- ' + row.mp + ', ' + row.mt + ': "' + row.label + '" — mắt phải (MP) và mắt trái (MT)');
@@ -479,19 +640,23 @@ function buildFieldListText() {
   MAT_KHUCXA_GROUPS.forEach(function (g) {
     lines.push('- ' + g.docau + ' (Độ cầu), ' + g.dotru + ' (Độ trụ), ' + g.truc + ' (Trục): "' + g.label + '"');
   });
-  addSection('Kết luận', KET_LUAN_FIELDS);
+  addSection('Kết luận', getKetLuanFields(formType));
   return lines.join('\n');
 }
 
-function buildPrompt() {
+function buildPrompt(formType) {
+  var tenMau = formType === 'M4' ? 'Mẫu 04 - Giấy khám sức khỏe người cao tuổi' : 'Mẫu 03 - Giấy khám sức khỏe và khám sức khỏe định kỳ';
+  var rule1 = formType === 'M4'
+    ? '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; doi_tuong_kham = mã "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi, luôn có mã này trừ khi phiếu ghi rõ thêm đối tượng đặc biệt khác thì có thể thêm, không thay thế); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Mẫu 04 KHÔNG có trường "Loại khám", không cần điền. Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.'
+    : '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; loai_kham = 2 (Khám Định Kỳ); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.';
   return [
-    'Bạn đang đọc 1 file PDF scan tay "Mẫu 03 - Giấy khám sức khỏe và khám sức khỏe định kỳ" (Thông tư Bộ Y tế Việt Nam).',
+    'Bạn đang đọc 1 file PDF scan tay "' + tenMau + '" (Thông tư Bộ Y tế Việt Nam).',
     'Nhiệm vụ: trích xuất đầy đủ thông tin theo đúng danh sách trường bên dưới, trả về DUY NHẤT 1 JSON object, không thêm chữ giải thích, không markdown code fence.',
     '',
-    buildFieldListText(),
+    buildFieldListText(formType),
     '',
     '### QUY TẮC BẮT BUỘC (rất quan trọng, áp dụng đúng như sau):',
-    '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; loai_kham = 2 (Khám Định Kỳ); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.',
+    rule1,
     '2. Với MỖI chuyên khoa khám lâm sàng: nếu ô "Chưa phát hiện bất thường" được đánh dấu/tick, PHẢI trả ck=1 VÀ phanloai=1 (không suy luận phanloai từ ô phân loại nữa trong trường hợp này).',
     '3. Ở bảng "2. Tiền sử bệnh, tật của bản thân" (22 dòng, 2 cột Có/Không cho mỗi nửa bảng): nếu bác sĩ KHÔNG tick từng ô riêng lẻ mà chỉ gạch 1 đường thẳng dài xuyên suốt toàn bộ cột "Không", hiểu là TẤT CẢ các dòng trong bảng đó đều = Không (giá trị 0).',
     '4. Trường doi_tuong_kham: CHỈ điền nếu chắc chắn khớp đúng 1 mã trong danh mục liệt kê ở trên. Nếu phiếu không ghi rõ hoặc không chắc chắn khớp mã nào, để chuỗi rỗng "" và BẮT BUỘC liệt kê "doi_tuong_kham" vào mảng "_can_xac_nhan" (đây là trường bắt buộc chọn tay, không tự đoán).',
@@ -500,6 +665,9 @@ function buildPrompt() {
     '7. Định dạng ngày: dd/MM/yyyy. Trường số: chỉ ghi số thuần, không kèm đơn vị.',
     '8. Nếu 1 trường hoàn toàn không có thông tin trong phiếu và không suy luận được, để chuỗi rỗng "".',
     '9. Nếu có nhiều hơn 1 file/ảnh được đính kèm cùng lúc, hiểu rằng TẤT CẢ đều là các trang khác nhau của CÙNG 1 phiếu khám của 1 bệnh nhân — tổng hợp thông tin từ tất cả các trang đó vào 1 JSON object duy nhất, không tách thành nhiều bệnh nhân.',
+    '10. Trường dinh_danh_ca_nhan (Số CCCD/Định danh): CHỈ chép lại đúng các chữ số thực sự đọc được trên phiếu. TUYỆT ĐỐI KHÔNG suy đoán hoặc tự điền chữ số dựa theo nơi khám/nơi làm việc/nơi đang sinh sống (ví dụ: KHÔNG được mặc định 3 số đầu là "079" chỉ vì phiếu khám tại TP.HCM — người đến khám có thể đăng ký thường trú ở tỉnh/thành khác, chỉ đang tạm trú/làm việc tại đây). Nếu một số chữ số bị mờ/khó đọc, chỉ điền phần CHẮC CHẮN đọc được, không tự đoán bù cho đủ số; và luôn liệt kê "dinh_danh_ca_nhan" vào mảng "_can_xac_nhan" trong trường hợp này để người duyệt tự đối chiếu lại với ảnh gốc.',
+    '11. Trường sdt (Số điện thoại): CHỈ chép lại đúng các chữ số thực sự đọc được trên phiếu, giữ nguyên số lượng chữ số đọc được dù ít hay nhiều. TUYỆT ĐỐI KHÔNG tự đoán, tự sửa, hoặc thêm/bớt chữ số để cho ra một số "nghe hợp lý" hơn (ví dụ KHÔNG tự đổi 1-2 số đầu cho khớp đầu số nhà mạng quen thuộc như 03x/05x/07x/08x/09x nếu nét chữ viết tay thực tế không rõ như vậy, và KHÔNG tự thêm số cho đủ 10 số nếu phiếu chỉ ghi ít hơn). Nếu một số chữ số bị mờ/khó đọc, chỉ điền phần CHẮC CHẮN đọc được, không đoán bù; và luôn liệt kê "sdt" vào mảng "_can_xac_nhan" trong trường hợp đó để người duyệt tự đối chiếu lại với ảnh gốc.',
+    '12. Trường the_bhyt (Số thẻ BHYT): CHỈ chép lại đúng các KÝ TỰ (cả chữ cái lẫn chữ số) thực sự đọc được trên thẻ/phiếu, theo đúng thứ tự và số lượng ký tự có trên đó. TUYỆT ĐỐI KHÔNG tự "sửa" ký tự cho khớp định dạng quen thuộc (ví dụ không tự đổi số 0 thành chữ O hoặc ngược lại, không tự đổi số 5 thành chữ S, số 8 thành chữ B, hoặc ngược lại, chỉ vì nghĩ vị trí đó "nên" là chữ hay là số) và KHÔNG tự thêm/bớt ký tự cho đủ độ dài thường gặp nếu nét chữ/số thực tế không thể hiện rõ như vậy. Nếu một vài ký tự bị mờ/khó đọc, chỉ điền phần CHẮC CHẮN đọc được, không đoán bù; và luôn liệt kê "the_bhyt" vào mảng "_can_xac_nhan" trong trường hợp đó để người duyệt tự đối chiếu lại với ảnh gốc.',
     '',
     'Trả về JSON theo đúng cấu trúc: { "ho_ten": "...", ..., "_can_xac_nhan": ["code1","code2"], "_icd_ai_de_xuat": ["code3"] }'
   ].join('\n');
@@ -515,10 +683,10 @@ function parseGeminiText(text) {
   return JSON.parse(cleaned);
 }
 
-function callGemini(pageList, model) {
+function callGemini(pageList, model, formType) {
   var body = {
     model: model,
-    promptText: buildPrompt(),
+    promptText: buildPrompt(formType),
     pages: pageList.map(function (pg) { return { mimeType: pg.mimeType, base64: pg.base64 }; })
   };
   return gasRequest('callGemini', body).then(function (res) {
@@ -560,10 +728,11 @@ function groupFilesByPatient(fileList) {
 }
 
 function handleFiles(fileList) {
+  var formType = STATE.formType;
   var groups = groupFilesByPatient(fileList);
   groups.forEach(function (group) {
     var patient = {
-      id: NEXT_ID++, fileName: group.label, pages: [],
+      id: NEXT_ID++, fileName: group.label, pages: [], formType: formType,
       status: 'processing', data: {}, canXacNhan: [], icdAiDeXuat: [], errorMsg: ''
     };
     STATE.patients.push(patient);
@@ -590,12 +759,12 @@ function handleFiles(fileList) {
     })).catch(function (err) {
       throw new Error('[Đọc file] ' + (err.message || err));
     }).then(function (rawParts) {
-      return callGemini(rawParts, STATE.model).then(function (json) {
+      return callGemini(rawParts, STATE.model, patient.formType).then(function (json) {
         patient.canXacNhan = json._can_xac_nhan || [];
         patient.icdAiDeXuat = json._icd_ai_de_xuat || [];
         delete json._can_xac_nhan;
         delete json._icd_ai_de_xuat;
-        patient.data = applyBusinessRules(json);
+        patient.data = applyBusinessRules(json, patient.formType);
         patient.status = 'pending';
         renderTable();
       }).catch(function (err) {
@@ -676,7 +845,7 @@ function removePatient(id) {
 
 function fieldValue(f, data) { return data[f.code] === undefined || data[f.code] === null ? '' : data[f.code]; }
 
-function renderSimpleField(f, data, warnSet) {
+function renderSimpleField(f, data, warnSet, formType) {
   var isWarn = warnSet.has(f.code);
   var html = '<div class="field' + (isWarn ? ' warn' : '') + '">';
   html += '<label>' + escapeHtml(f.label) + (f.optional ? '' : ' *') + '</label>';
@@ -693,7 +862,8 @@ function renderSimpleField(f, data, warnSet) {
     });
     html += '</select>';
   } else if (f.type === 'select-dynamic') {
-    var list = (STATE.refData && STATE.refData[f.source]) || FALLBACK_REF[f.source] || [];
+    var refForType = STATE.refData[formType];
+    var list = (refForType && refForType[f.source]) || FALLBACK_REF[f.source] || [];
     var curVal = fieldValue(f, data);
     // Không để mất giá trị AI đọc được nếu danh mục chưa tải xong / chưa khớp đúng chữ —
     // cùng cách đang làm cho Phường/Xã, áp dụng chung cho mọi select-dynamic.
@@ -710,7 +880,8 @@ function renderSimpleField(f, data, warnSet) {
       html += '</select>';
     }
   } else if (f.type === 'select-doituong') {
-    var doiTuongList = (STATE.refData && STATE.refData.doiTuong) || FALLBACK_REF.doiTuong || [];
+    var refForType2 = STATE.refData[formType];
+    var doiTuongList = (refForType2 && refForType2.doiTuong) || FALLBACK_REF.doiTuong || [];
     var curDT = fieldValue(f, data);
     if (curDT && !doiTuongList.some(function (dt) { return String(dt.ma) === String(curDT); })) {
       doiTuongList = [{ ma: curDT, ten: '(AI đọc được, không khớp danh mục hiện có — kiểm tra lại)' }].concat(doiTuongList);
@@ -723,7 +894,8 @@ function renderSimpleField(f, data, warnSet) {
     });
     html += '</select>';
   } else if (f.type === 'select-ward') {
-    var wards = STATE.wardCache[data.city_id] || [];
+    var wardCacheForType = STATE.wardCache[formType] || {};
+    var wards = wardCacheForType[data.city_id] || [];
     var curWard = fieldValue(f, data);
     if (curWard && wards.indexOf(curWard) === -1) wards = [curWard].concat(wards);
     if (f.searchable) {
@@ -758,21 +930,43 @@ function renderBool01Field(f, data, warnSet, yesNoLabel) {
 }
 
 // ============================================================
-// 4b) COMBOBOX TÌM KIẾM (Nghề nghiệp / Tỉnh / Phường-Xã)
+// 4b) COMBOBOX TÌM KIẾM (Nghề nghiệp / Tỉnh / Phường-Xã / ICD-10)
 // ------------------------------------------------------------
-// Vẫn dùng 1 <input type="hidden" data-code="..."> để tương thích với
-// cơ chế đọc dữ liệu form hiện có (container.querySelectorAll('[data-code]')
-// trong bindModalEvents) — chỉ thêm 1 ô <input type="text"> gõ-để-lọc phía trên.
-// Danh sách gợi ý dùng CHUNG 1 dropdown nổi (#comboDropdown, gắn ở cuối <body>)
-// để không bị modal-form (overflow-y:auto) cắt mất phần dropdown tràn ra ngoài.
+// 2 biến thể dùng chung 1 bộ máy lọc/hiển thị (renderComboOptions...selectComboValue):
+//  - "Nghiêm ngặt" (Nghề nghiệp/Tỉnh/Phường-Xã): value PHẢI khớp đúng 1 mục trong danh mục —
+//    dùng cặp <input text> (gõ-để-lọc) + <input hidden data-code> (giá trị thật submit đi).
+//    Gõ sai/không khớp -> tự khôi phục lại giá trị hợp lệ trước đó khi rời ô (xem renderCombo()).
+//  - "Tự do" (ICD-10 chẩn đoán sơ bộ/xác định): value KHÔNG bắt buộc khớp danh mục (bác sĩ có thể
+//    viết mã/mô tả không có trong danh mục tham khảo) — input text data-code chính là ô dữ liệu
+//    luôn, không có hidden riêng, không tự khôi phục khi rời ô (xem renderIcdInput()).
+// Mỗi mục trong danh mục có thể là 1 chuỗi (Nghề nghiệp/Tỉnh/Phường-Xã) hoặc 1 object
+// {display, value} (ICD-10: hiển thị "MÃ - Tên bệnh" nhưng chỉ điền MÃ vào ô khi chọn).
+// Danh sách gợi ý dùng CHUNG 1 dropdown nổi (#comboDropdown, gắn ở cuối <body>) để không bị
+// modal-form (overflow-y:auto) cắt mất phần dropdown tràn ra ngoài.
 // ============================================================
+
+function comboItemDisplay(item) { return (item && typeof item === 'object') ? item.display : item; }
+function comboItemValue(item) { return (item && typeof item === 'object') ? item.value : item; }
 
 function renderCombo(code, list, currentValue) {
   STATE.comboLists = STATE.comboLists || {};
   STATE.comboLists[code] = list;
   var display = (currentValue === undefined || currentValue === null) ? '' : String(currentValue);
-  return '<input type="text" class="combo-input" data-combo="' + code + '" autocomplete="off" placeholder="-- gõ để tìm --" value="' + escapeHtml(display) + '">' +
+  return '<input type="text" class="combo-input" data-combo="' + code + '" data-combo-strict="1" autocomplete="off" placeholder="-- gõ để tìm --" value="' + escapeHtml(display) + '">' +
          '<input type="hidden" data-code="' + code + '" value="' + escapeHtml(display) + '">';
+}
+
+// Biến thể "tự do" cho các ô ICD-10 — dùng CHUNG 1 danh mục (STATE.comboLists.icd10, xem
+// icd10DisplayList()), value có thể khác danh mục (không bắt buộc khớp).
+function renderIcdInput(code, value) {
+  var display = (value === undefined || value === null) ? '' : String(value);
+  return '<input type="text" class="combo-input" data-code="' + code + '" data-combo="icd10" data-combo-strict="0" autocomplete="off" placeholder="-- gõ mã hoặc tên bệnh --" value="' + escapeHtml(display) + '">';
+}
+
+function icd10DisplayList(formType) {
+  var refForType = STATE.refData[formType];
+  var raw = (refForType && refForType.icd10) || FALLBACK_REF.icd10 || [];
+  return raw.map(function (it) { return { display: it.ma + ' - ' + it.ten, value: it.ma }; });
 }
 
 function normalizeVN(str) {
@@ -804,7 +998,7 @@ function renderComboOptions(inputEl) {
   var code = inputEl.dataset.combo;
   var list = STATE.comboLists[code] || [];
   var q = normalizeVN(inputEl.value);
-  var filtered = q ? list.filter(function (item) { return normalizeVN(item).indexOf(q) !== -1; }) : list;
+  var filtered = q ? list.filter(function (item) { return normalizeVN(comboItemDisplay(item)).indexOf(q) !== -1; }) : list;
   var shown = filtered.slice(0, COMBO_MAX_SHOWN);
   var html = '';
   if (!list.length) {
@@ -813,7 +1007,7 @@ function renderComboOptions(inputEl) {
     html = '<div class="combo-empty">Không tìm thấy — kiểm tra lại chính tả.</div>';
   } else {
     shown.forEach(function (item) {
-      html += '<div data-value="' + escapeHtml(item) + '">' + escapeHtml(item) + '</div>';
+      html += '<div data-value="' + escapeHtml(comboItemValue(item)) + '">' + escapeHtml(comboItemDisplay(item)) + '</div>';
     });
     if (filtered.length > shown.length) {
       html += '<div class="combo-empty">... còn ' + (filtered.length - shown.length) + ' kết quả khác, gõ thêm để thu hẹp</div>';
@@ -837,11 +1031,13 @@ function highlightComboOption() {
 }
 
 function selectComboValue(inputEl, value) {
-  var hidden = inputEl.nextElementSibling;
   inputEl.value = value;
-  if (hidden && hidden.dataset && hidden.dataset.code === inputEl.dataset.combo) {
-    hidden.value = value;
-    hidden.dispatchEvent(new Event('change', { bubbles: true }));
+  // Ô "nghiêm ngặt" (Nghề nghiệp/Tỉnh/Phường-Xã): data-code nằm ở hidden sibling.
+  // Ô "tự do" (ICD-10): data-code nằm ngay trên chính inputEl, không có hidden.
+  var target = inputEl.hasAttribute('data-code') ? inputEl : inputEl.nextElementSibling;
+  if (target) {
+    target.value = value;
+    target.dispatchEvent(new Event('change', { bubbles: true }));
   }
   closeCombo();
 }
@@ -890,13 +1086,16 @@ function initComboEvents() {
   document.addEventListener('focusout', function (e) {
     if (!e.target.classList || !e.target.classList.contains('combo-input')) return;
     var inputEl = e.target;
+    var isStrict = inputEl.dataset.comboStrict !== '0';
     setTimeout(function () {
       closeCombo();
-      // Nếu chữ đang gõ không khớp CHÍNH XÁC 1 giá trị hợp lệ trong danh mục -> khôi phục lại
-      // giá trị đã chọn trước đó (tránh lưu nhầm giá trị tự do không có trong danh mục thật).
+      if (!isStrict) return; // ô tự do (ICD-10): giữ nguyên chữ đã gõ, không ép khớp danh mục
+      // Ô nghiêm ngặt: nếu chữ đang gõ không khớp CHÍNH XÁC 1 giá trị hợp lệ trong danh mục ->
+      // khôi phục lại giá trị đã chọn trước đó (tránh lưu nhầm giá trị tự do không có trong danh mục thật).
       var list = STATE.comboLists[inputEl.dataset.combo] || [];
       var hidden = inputEl.nextElementSibling;
-      if (list.indexOf(inputEl.value) === -1) inputEl.value = hidden ? hidden.value : '';
+      var matches = list.some(function (item) { return comboItemDisplay(item) === inputEl.value; });
+      if (!matches) inputEl.value = hidden ? hidden.value : '';
     }, 150);
   });
 }
@@ -912,9 +1111,22 @@ function renderGiaDinhCheckboxes(data) {
   return html;
 }
 
-function renderClinicalTable(data, warnSet) {
+// Khối tiền sử gia đình tim mạch/chuyển hóa — CHỈ dùng cho M4. tsb_giadinh là cổng Có/Không
+// AI đọc trực tiếp từ phiếu (không tự suy ra từ 7 mục con), giống hệt cách "Chưa phát hiện
+// bất thường" độc lập với chẩn đoán chi tiết ở phần khám lâm sàng.
+function renderGiaDinhTimMachCheckboxes(data, warnSet) {
+  var html = renderBool01Field({ code: 'tsb_giadinh', label: 'Gia đình có mắc bệnh nào dưới đây không' }, data, warnSet);
+  html += '<div class="grid3">';
+  GIADINH_TIMMACH_FIELDS_M4.forEach(function (f) { html += renderBool01Field(f, data, warnSet); });
+  html += '</div>';
+  return html;
+}
+
+function renderClinicalTable(data, warnSet, formType) {
+  STATE.comboLists.icd10 = icd10DisplayList(formType);
+  var specialties = getSpecialties(formType);
   var html = '<table class="clinical-table"><thead><tr><th>Chuyên khoa</th><th>Bình thường?</th><th>Chẩn đoán sơ bộ (ICD)</th><th>Chẩn đoán xác định (ICD)</th><th>Phân loại</th></tr></thead><tbody>';
-  SPECIALTIES.forEach(function (sp) {
+  specialties.forEach(function (sp) {
     var ck = fieldValue({ code: sp.ck }, data);
     var sobo = fieldValue({ code: sp.sobo }, data);
     var xacdinh = fieldValue({ code: sp.xacdinh }, data);
@@ -924,8 +1136,8 @@ function renderClinicalTable(data, warnSet) {
     html += '<tr>';
     html += '<td>' + escapeHtml(sp.label) + (sp.tuchoi ? '<br><label style="font-weight:400;font-size:11px;"><input type="checkbox" data-code="' + sp.tuchoi + '" ' + (String(fieldValue({ code: sp.tuchoi }, data)) === '1' ? 'checked' : '') + '> Từ chối khám</label>' : '') + '</td>';
     html += '<td><select data-code="' + sp.ck + '"><option value="1"' + (String(ck) === '1' ? ' selected' : '') + '>Bình thường</option><option value="0"' + (String(ck) === '0' ? ' selected' : '') + '>Bất thường</option></select></td>';
-    html += '<td class="' + (soboWarn ? 'warn-cell' : '') + '"><input type="text" data-code="' + sp.sobo + '" value="' + escapeHtml(sobo) + '">' + (aiIcd ? '<span class="tag-ai">AI đề xuất</span>' : '') + '</td>';
-    html += '<td><input type="text" data-code="' + sp.xacdinh + '" value="' + escapeHtml(xacdinh) + '"></td>';
+    html += '<td class="' + (soboWarn ? 'warn-cell' : '') + '">' + renderIcdInput(sp.sobo, sobo) + (aiIcd ? '<span class="tag-ai">AI đề xuất</span>' : '') + '</td>';
+    html += '<td>' + renderIcdInput(sp.xacdinh, xacdinh) + '</td>';
     html += '<td><select data-code="' + sp.phanloai + '">' + [1, 2, 3, 4, 5].map(function (n) { return '<option value="' + n + '"' + (String(phanloai) === String(n) ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></td>';
     html += '</tr>';
   });
@@ -953,6 +1165,23 @@ function renderMatChiTiet(data, warnSet) {
   MAT_KHUCXA_GROUPS.forEach(function (g) {
     html += '<tr><td>' + escapeHtml(g.label) + '</td>';
     [g.docau, g.dotru, g.truc].forEach(function (code) {
+      var warn = warnSet.has(code) ? 'warn-cell' : '';
+      html += '<td class="' + warn + '"><input type="text" data-code="' + code + '" value="' + escapeHtml(fieldValue({ code: code }, data)) + '"></td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// Khối khám thính lực (Nói thường/Nói thầm x tai trái/phải) — CHỈ dùng cho M4.
+function renderThinhLucChiTiet(data, warnSet) {
+  var html = '<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:8px;background:#fafbfc;">';
+  html += '<div style="font-weight:600;font-size:13px;margin-bottom:8px;">👂 Khám thính lực (mét)</div>';
+  html += '<table class="clinical-table" style="margin-top:0;"><thead><tr><th></th><th>Tai trái</th><th>Tai phải</th></tr></thead><tbody>';
+  THINH_LUC_ROWS_M4.forEach(function (row) {
+    html += '<tr><td>' + escapeHtml(row.label) + '</td>';
+    [row.trai, row.phai].forEach(function (code) {
       var warn = warnSet.has(code) ? 'warn-cell' : '';
       html += '<td class="' + warn + '"><input type="text" data-code="' + code + '" value="' + escapeHtml(fieldValue({ code: code }, data)) + '"></td>';
     });
@@ -1072,13 +1301,15 @@ function renderPdfPager(p, activeIndex) {
 function openDetail(id) {
   var p = findPatient(id);
   if (!p) return;
+  var formType = p.formType || 'M3';
   renderPdfPager(p, 0);
   var warnSet = new Set(p.canXacNhan || []);
   p.data.__icdAi = p.icdAiDeXuat || [];
 
-  var html = '<div class="modal-form-header"><h2>' + escapeHtml(p.data.ho_ten || p.fileName) + '</h2><button class="close-x" id="btnCloseModal">&times;</button></div>';
+  var tenMauBadge = formType === 'M4' ? '<span class="badge badge-pending" style="margin-left:8px;">Mẫu 04 — Người cao tuổi</span>' : '<span class="badge badge-pending" style="margin-left:8px;">Mẫu 03</span>';
+  var html = '<div class="modal-form-header"><h2>' + escapeHtml(p.data.ho_ten || p.fileName) + tenMauBadge + '</h2><button class="close-x" id="btnCloseModal">&times;</button></div>';
 
-  if (!STATE.refData) {
+  if (!STATE.refData[formType]) {
     html += '<div style="background:var(--warn);border:1px solid var(--warn-border);border-radius:6px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#92610a;">' +
       '⚠ Không tải được danh mục đầy đủ (Nghề nghiệp, Tỉnh/Thành, Phường/Xã...) — các dropdown liên quan có thể thiếu lựa chọn hoặc không tự cập nhật khi đổi Tỉnh/Thành.' +
       (STATE.refDataError ? '<br>Chi tiết: ' + escapeHtml(STATE.refDataError) : '') +
@@ -1087,11 +1318,16 @@ function openDetail(id) {
   }
 
   html += '<div class="section-title">Hành chính</div><div class="grid2">';
-  HANH_CHINH_FIELDS.forEach(function (f) { html += renderSimpleField(f, p.data, warnSet); });
+  getHanhChinhFields(formType).forEach(function (f) { html += renderSimpleField(f, p.data, warnSet, formType); });
   html += '</div>';
 
   html += '<div class="section-title">Tiền sử gia đình (ông/bà/bố/mẹ/anh chị em ruột)</div>';
   html += renderGiaDinhCheckboxes(p.data);
+
+  if (formType === 'M4') {
+    html += '<div class="section-title">Tiền sử bệnh tim mạch/chuyển hóa của gia đình</div>';
+    html += renderGiaDinhTimMachCheckboxes(p.data, warnSet);
+  }
 
   html += '<div class="section-title">Tiền sử bản thân <button class="btn btn-sm btn-secondary" id="btnAllKhong" type="button">Đặt tất cả = Không</button></div><div class="grid3">';
   TIEN_SU_BAN_THAN_FIELDS.forEach(function (f) { html += renderBool01Field(f, p.data, warnSet); });
@@ -1099,20 +1335,21 @@ function openDetail(id) {
   html += '<div class="grid2">';
   CAU_HOI_KHAC_FIELDS.forEach(function (f) {
     if (f.type === 'bool01_yesno') html += renderBool01Field(f, p.data, warnSet);
-    else html += renderSimpleField(f, p.data, warnSet);
+    else html += renderSimpleField(f, p.data, warnSet, formType);
   });
   html += '</div>';
 
   html += '<div class="section-title">Khám thể lực</div><div class="grid3">';
-  THE_LUC_FIELDS.forEach(function (f) { html += renderSimpleField(f, p.data, warnSet); });
+  getTheLucFields(formType).forEach(function (f) { html += renderSimpleField(f, p.data, warnSet, formType); });
   html += '</div>';
 
   html += '<div class="section-title">Khám lâm sàng</div>';
-  html += renderClinicalTable(p.data, warnSet);
+  html += renderClinicalTable(p.data, warnSet, formType);
   html += renderMatChiTiet(p.data, warnSet);
+  if (formType === 'M4') html += renderThinhLucChiTiet(p.data, warnSet);
 
   html += '<div class="section-title">Kết luận</div><div class="grid2">';
-  KET_LUAN_FIELDS.forEach(function (f) { html += renderSimpleField(f, p.data, warnSet); });
+  getKetLuanFields(formType).forEach(function (f) { html += renderSimpleField(f, p.data, warnSet, formType); });
   html += '</div>';
 
   html += '<div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">';
@@ -1159,7 +1396,7 @@ function bindModalEvents(p) {
   document.getElementById('btnCloseModal').addEventListener('click', closeModal);
   document.getElementById('btnCloseModal2').addEventListener('click', closeModal);
   document.getElementById('btnApprove').addEventListener('click', function () {
-    var missing = validateRequiredFields(p.data);
+    var missing = validateRequiredFields(p.data, p.formType);
     if (missing.length) {
       alert('Chưa thể duyệt phiếu này vì còn thiếu trường bắt buộc (*):\n\n- ' + missing.join('\n- ') +
         '\n\nDuyệt khi còn thiếu sẽ khiến lúc xuất Excel lên hệ thống bị báo lỗi. Vui lòng điền đầy đủ rồi duyệt lại.');
@@ -1172,12 +1409,17 @@ function bindModalEvents(p) {
 }
 
 // Các trường bắt buộc (*) cần điền đủ trước khi cho phép Duyệt — tránh tình trạng duyệt xong,
-// xuất Excel lên hệ thống thật mới báo lỗi thiếu dữ liệu.
-var REQUIRED_FIELD_SECTIONS = [HANH_CHINH_FIELDS, THE_LUC_FIELDS, KET_LUAN_FIELDS];
+// xuất Excel lên hệ thống thật mới báo lỗi thiếu dữ liệu. Tính theo formType vì M3/M4 có bộ
+// trường (và field nào là bắt buộc) khác nhau.
+function getRequiredFieldSections(formType) {
+  return formType === 'M4'
+    ? [HANH_CHINH_FIELDS_M4, THE_LUC_FIELDS_M4, KET_LUAN_FIELDS_M4]
+    : [HANH_CHINH_FIELDS, THE_LUC_FIELDS, KET_LUAN_FIELDS];
+}
 
-function validateRequiredFields(data) {
+function validateRequiredFields(data, formType) {
   var missing = [];
-  REQUIRED_FIELD_SECTIONS.forEach(function (fields) {
+  getRequiredFieldSections(formType).forEach(function (fields) {
     fields.forEach(function (f) {
       if (f.optional) return;
       var v = data[f.code];
@@ -1188,9 +1430,11 @@ function validateRequiredFields(data) {
 }
 
 function onCityChanged(p) {
+  var formType = p.formType || 'M3';
   var cityName = p.data.city_id;
-  if (STATE.wardCache[cityName]) { openDetail(p.id); return; }
-  fetchWardsByCity(cityName).then(function () { openDetail(p.id); });
+  var cache = STATE.wardCache[formType] || (STATE.wardCache[formType] = {});
+  if (cache[cityName]) { openDetail(p.id); return; }
+  fetchWardsByCity(cityName, formType).then(function () { openDetail(p.id); });
 }
 
 function closeModal() {
@@ -1235,25 +1479,32 @@ function gasRequest(action, body) {
   });
 }
 
+// Tải danh mục cho CẢ 2 loại phiếu (M3 + M4) ngay từ đầu — chi phí thêm 1 lượt gọi GAS lúc
+// khởi động, đổi lại việc chuyển qua lại "Loại phiếu" không cần tải lại giữa chừng.
 function loadRefData() {
-  return gasRequest('getRefData').then(function (res) {
-    if (res.status === 'success') {
-      STATE.refData = res;
-      STATE.refDataError = null;
-      return fetchWardsByCity('Thành Phố Hồ Chí Minh');
-    }
-    throw new Error(res.message || 'Không tải được danh mục.');
-  }).catch(function (err) {
-    console.warn('Không tải được danh mục từ GAS, dùng danh mục rút gọn tạm thời:', err.message);
-    STATE.refData = null;
-    STATE.refDataError = String(err.message || err);
-  });
+  var loadOne = function (formType) {
+    return gasRequest('getRefData', { formType: formType }).then(function (res) {
+      if (res.status === 'success') {
+        STATE.refData[formType] = res;
+        return fetchWardsByCity('Thành Phố Hồ Chí Minh', formType);
+      }
+      throw new Error(res.message || 'Không tải được danh mục.');
+    }).catch(function (err) {
+      console.warn('Không tải được danh mục (' + formType + ') từ GAS, dùng danh mục rút gọn tạm thời:', err.message);
+      STATE.refData[formType] = null;
+      STATE.refDataError = String(err.message || err);
+    });
+  };
+  return Promise.all([loadOne('M3'), loadOne('M4')]);
 }
 
-function fetchWardsByCity(cityName) {
-  return gasRequest('getWardsByCity', { cityName: cityName }).then(function (res) {
-    if (res.status === 'success') STATE.wardCache[cityName] = res.wards;
-  }).catch(function (err) { console.warn('Không tải được danh sách phường/xã:', err.message); });
+function fetchWardsByCity(cityName, formType) {
+  return gasRequest('getWardsByCity', { cityName: cityName, formType: formType }).then(function (res) {
+    if (res.status === 'success') {
+      if (!STATE.wardCache[formType]) STATE.wardCache[formType] = {};
+      STATE.wardCache[formType][cityName] = res.wards;
+    }
+  }).catch(function (err) { console.warn('Không tải được danh sách phường/xã (' + formType + '):', err.message); });
 }
 
 function buildExportRecord(p) {
@@ -1266,6 +1517,7 @@ function buildExportRecord(p) {
   var ids = p.data.giadinh_benh_ids || [];
   rec.giadinh_macbenh = ids.length ? 1 : 0;
   rec.giadinh_danhsachbenh_icd = ids.join(',');
+  rec.formType = p.formType || 'M3'; // để Code.gs biết ghi vào đúng sheet mẫu + đúng cột
   return rec;
 }
 
@@ -1278,7 +1530,8 @@ function exportBatch() {
   var records = approved.map(buildExportRecord);
   gasRequest('exportBatch', { records: records }).then(function (res) {
     if (res.status !== 'success') throw new Error(res.message || 'Xuất thất bại.');
-    downloadBase64File(res.base64, res.fileName);
+    // Có thể ra NHIỀU file nếu đợt duyệt lẫn cả phiếu M3 và M4 — mỗi loại 1 file .xlsx riêng.
+    (res.files || []).forEach(function (f) { downloadBase64File(f.base64, f.fileName); });
   }).catch(function (err) {
     alert('Xuất Excel thất bại: ' + err.message);
   }).finally(function () {
@@ -1307,6 +1560,12 @@ function initUI() {
   loadSettings();
   document.getElementById('cfgModel').value = STATE.model;
   document.getElementById('cfgGasUrl').value = STATE.gasUrl;
+  setFormType(STATE.formType);
+
+  document.getElementById('formTypeToggle').addEventListener('click', function (e) {
+    var btn = e.target.closest('.form-type-btn');
+    if (btn) setFormType(btn.dataset.formType);
+  });
 
   document.getElementById('btnToggleSettings').addEventListener('click', function () {
     var panel = document.getElementById('settingsPanel');
