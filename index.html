@@ -62,7 +62,9 @@
   .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 14px;}
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:stretch;justify-content:center;z-index:100;}
   .modal-overlay.show{display:flex;}
-  .modal-box{background:#fff;width:100%;max-width:1200px;margin:16px;border-radius:10px;display:flex;overflow:hidden;max-height:calc(100vh - 32px);}
+  .modal-box{background:#fff;width:94vw;max-width:1900px;margin:16px;border-radius:10px;display:flex;position:relative;overflow:hidden;max-height:calc(100vh - 32px);}
+  .modal-width-handle{position:absolute;top:0;right:0;bottom:0;width:8px;cursor:ew-resize;background:transparent;}
+  .modal-width-handle:hover,.modal-width-handle.dragging{background:var(--brand);opacity:.5;}
   .modal-pdf{flex:0 0 42%;min-width:220px;max-width:80%;background:#333;display:flex;flex-direction:column;}
   .pdf-viewport{flex:1;overflow:hidden;position:relative;background:#222;cursor:grab;}
   .pdf-viewport.dragging{cursor:grabbing;}
@@ -184,6 +186,7 @@
     </div>
     <div class="resize-handle" id="resizeHandle"></div>
     <div class="modal-form" id="modalFormContainer"></div>
+    <div class="modal-width-handle" id="modalWidthHandle" title="Kéo để chỉnh rộng khung duyệt"></div>
   </div>
 </div>
 
@@ -325,6 +328,191 @@ var KET_LUAN_FIELDS_M4 = [
   {code:'danh_muc_de_nghi', label:'Đề nghị', type:'select', options:DE_NGHI_OPTIONS},
   {code:'de_nghi', label:'Ghi rõ đề nghị', type:'text', optional:true}
 ];
+
+// ============================================================
+// 1c) "HỎI BỆNH VÀ KHÁM LÂM SÀNG" (chỉ Mẫu 04) — file xuất RIÊNG thứ 2
+// ------------------------------------------------------------
+// Phát hiện quan trọng: hệ thống import thật của Mẫu 04 bắt buộc 2 file Excel riêng cho CÙNG 1
+// bệnh nhân (nối qua CCCD/dinh_danh_ca_nhan): "Thông tin khám" (đã làm ở trên) và "Hỏi bệnh và
+// khám lâm sàng" (khối này) — không phải 1 file gộp hết như ban đầu tưởng. Đối chiếu tay từng
+// mục với file PDF gốc (trang 2-8) và file mẫu Excel B2_HỎI_BỆNH_VÀ_KHÁM_LÂM_SÀNG, khớp đúng
+// từng câu chữ — không suy đoán. Toàn bộ khối này CHỈ áp dụng cho Mẫu 04, Mẫu 03 không có.
+// ============================================================
+
+// D1: 14 bệnh mạn tính, mỗi bệnh hỏi 2 việc — có mắc không (1/0) + cơ sở KBCB đang điều trị
+// (ghi tự do, có gợi ý từ danh mục cơ sở y tế — xem renderCsKcbInput()).
+var HOIBENH_DISEASES_M4 = [
+  {code:'benh_tanghuyetap', cskcb:'benh_tanghuyetap_cskcb_name', label:'Tăng huyết áp'},
+  {code:'benh_daithaoduong', cskcb:'benh_daithaoduong_cskcb_name', label:'Đái tháo đường'},
+  {code:'benh_phoi_hoibenh', cskcb:'benh_phoi_hoibenh_cskcb_name', label:'Phổi tắc nghẽn mạn tính'},
+  {code:'benh_hen', cskcb:'benh_hen_cskcb_name', label:'Hen phế quản'},
+  {code:'benh_ungthu', cskcb:'benh_ungthu_cskcb_name', label:'Ung thư'},
+  {code:'benh_suytim', cskcb:'benh_suytim_cskcb_name', label:'Suy tim'},
+  {code:'benh_khop', cskcb:'benh_khop_cskcb_name', label:'Thoái hoá khớp'},
+  {code:'benh_thanmam', cskcb:'benh_thanmam_cskcb_name', label:'Bệnh thận mạn'},
+  {code:'benh_timthieumau', cskcb:'benh_timthieumau_cskcb_name', label:'Bệnh tim thiếu máu cục bộ'},
+  {code:'benh_nhoimau', cskcb:'benh_nhoimau_cskcb_name', label:'Nhồi máu cơ tim'},
+  {code:'benh_dotqui', cskcb:'benh_dotqui_cskcb_name', label:'Đột quỵ'},
+  {code:'benh_roiloan_tramcam', cskcb:'benh_roiloan_tramcam_cskcb_name', label:'Rối loạn trầm cảm'},
+  {code:'benh_roiloan_loau', cskcb:'benh_roiloan_loau_cskcb_name', label:'Rối loạn lo âu'},
+  {code:'benh_sasut_tritue', cskcb:'benh_sasut_tritue_cskcb_name', label:'Sa sút trí tuệ'}
+];
+
+// D2-D7: các bộ câu hỏi tầm soát — CHỈ hỏi nếu bệnh tương ứng ở D1 = "Có" (nêu rõ trong prompt),
+// bỏ qua (để trống) nếu bệnh đó = "Không".
+var TAMSOAT_DTD_FIELDS_M4 = [ // D2 — điều kiện: benh_daithaoduong = 1
+  {code:'dtd_maudoi', label:'Gần đây cảm thấy mau đói, ăn nhiều lần trong ngày'},
+  {code:'dtd_khatnuoc', label:'Cảm thấy khát nước, uống nhiều nước (trên 3 lít/24 giờ)'},
+  {code:'dtd_ditieunhieu', label:'Đi tiểu nhiều lần trong ngày (bình thường 4-7 lần/24 giờ)'},
+  {code:'dtd_sutcan', label:'Gần đây bị sụt cân nhiều (mặc quần áo rộng hơn trước)'},
+  {code:'dtd_vetthuong', label:'Xuất hiện vết thương ngoài da khó lành'}
+];
+var TAMSOAT_COPD_FIELDS_M4 = [ // D3 — điều kiện: benh_phoi_hoibenh = 1
+  {code:'ptnmt_ho', label:'Ho vài lần trong ngày ở hầu hết các ngày'},
+  {code:'ptnmt_khacdom', label:'Khạc đàm ở hầu hết các ngày'},
+  {code:'ptnmt_khotho', label:'Dễ bị khó thở hơn những người cùng tuổi'}
+];
+var TAMSOAT_HEN_FIELDS_M4 = [ // D4 — điều kiện: benh_hen = 1
+  {code:'hpq_khokhe', label:'Xuất hiện cơn khò khè/thở rít tái đi tái lại'},
+  {code:'hpq_ho_demkhuya', label:'Ho gây khó chịu lúc đêm khuya'},
+  {code:'hpq_ho_thucgiac', label:'Bị thức giấc vì cơn ho hay khó thở'},
+  {code:'hpq_ho_vandong', label:'Ho, khò khè hay thở rít sau khi vận động thể lực'},
+  {code:'hpq_hohap_theomua', label:'Có vấn đề hô hấp vào mùa nhất định trong năm'},
+  {code:'hpq_ho_chatkichthich', label:'Ho, khò khè hay nặng ngực khi hít phải chất kích thích'},
+  {code:'hpq_dotcamlanh', label:'Bị cảm lạnh "nhập vào phổi" hoặc điều trị hơn 10 ngày mới khỏi'},
+  {code:'hpq_trieuchung_caithien', label:'Triệu chứng hô hấp có cải thiện khi điều trị hen thích hợp'}
+];
+var TAMSOAT_UNGTHU_FIELDS_M4 = [ // D5 — điều kiện: benh_ungthu = 1
+  {code:'ut_vetloet', label:'Có vết loét trên cơ thể lâu lành'},
+  {code:'ut_hodai', label:'Ho dai dẳng hoặc khàn tiếng'},
+  {code:'ut_ankhongtieu', label:'Ăn không tiêu hoặc nuốt khó'},
+  {code:'ut_thaydoi_thoiquen_ruotbongdai', label:'Thay đổi thói quen ruột/bọng đái (tiêu tiểu nhiều lần hoặc xen táo bón)'},
+  {code:'ut_cucu', label:'Có chỗ dầy lên hoặc cục u ở vú/nơi nào đó trong cơ thể'},
+  {code:'ut_notruoi', label:'Xuất hiện nốt ruồi thay đổi màu/hình ảnh/kích thước'},
+  {code:'ut_hachto', label:'Sờ thấy ở cổ, nách, bẹn có hạch to bất thường'},
+  {code:'ut_utai_nghetmui', label:'Bị ù tai, nghẹt mũi kéo dài uống thuốc không giảm'},
+  {code:'ut_sutcan', label:'Sụt cân, da xanh xao thiếu máu không rõ nguyên nhân'},
+  {code:'ut_chaymau_dauvu', label:'Chảy máu hoặc tiết dịch bất thường ở đầu vú'},
+  {code:'ut_chaymau_amdao', label:'Chảy máu, dịch bất thường ở âm đạo (chỉ áp dụng với nữ)'}
+];
+
+var SCALE_TANSUAT_4_OPTIONS = [
+  {v:1,t:'Gần như mọi ngày'},
+  {v:2,t:'Hầu như không'},
+  {v:3,t:'Hơn một nửa số ngày'},
+  {v:4,t:'Một vài ngày'}
+];
+var TAMSOAT_TRAMCAM_FIELDS_M4 = [ // D6 (thang PHQ-9) — điều kiện: benh_roiloan_tramcam = 1
+  {code:'rltc_ithungthu', label:'Ít hứng thú hoặc không có niềm vui thích làm việc gì', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rltc_channan', label:'Cảm thấy chán nản, kiệt sức, hay tuyệt vọng', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rltc_khongu', label:'Khó ngủ, ngủ không lâu hoặc ngủ quá nhiều', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rltc_metmoi', label:'Cảm thấy mệt mỏi hoặc ít sức lực (ít năng lượng hoạt động)', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rltc_khongngonmieng', label:'Cảm thấy ăn không ngon miệng hoặc ăn quá nhiều', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rltc_camthayte', label:'Cảm thấy mình tệ, là người thất bại, hoặc làm gia đình thất vọng', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rltc_khotaptrung', label:'Khó tập trung vào việc như đọc sách, báo, xem tivi', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rltc_chamchap', label:'Đi đứng/nói năng chậm chạp, hoặc ngược lại quá bồn chồn', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rltc_ynghi', label:'Có ý nghĩ tự gây đau đớn cho bản thân, hoặc nghĩ thà mình chết đi', type:'select', options:SCALE_TANSUAT_4_OPTIONS}
+];
+var TAMSOAT_LOAU_FIELDS_M4 = [ // D7 (thang GAD-7) — điều kiện: benh_roiloan_loau = 1
+  {code:'rlla_canthang', label:'Cảm thấy căng thẳng, lo lắng hoặc bất an', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rlla_kiemsoat_lolang', label:'Cảm thấy không thể ngưng hoặc kiểm soát lo lắng', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rlla_lolang_nhieuthu', label:'Lo lắng quá mức về nhiều thứ', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rlla_khothugian', label:'Khó thư giãn', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rlla_bucrut', label:'Bứt rứt đến mức khó ngồi yên', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rlla_bucboi', label:'Trở nên dễ bực bội hoặc cáu kỉnh', type:'select', options:SCALE_TANSUAT_4_OPTIONS},
+  {code:'rlla_lolang', label:'Cảm thấy lo lắng như thể điều gì khủng khiếp có thể xảy ra', type:'select', options:SCALE_TANSUAT_4_OPTIONS}
+];
+
+// D8.1-D8.5: đánh giá chức năng/suy yếu/té ngã/nhận thức — LUÔN hỏi (không có điều kiện D1 nào).
+var ADL_FIELDS_M4 = [ // D8.1 — mặc định "Có" khi bác sĩ không đánh dấu gì (người bình thường)
+  {code:'hds_tutam', label:'Có thể tự tắm'},
+  {code:'hds_tumacquanao', label:'Có thể tự mặc quần áo'},
+  {code:'hds_tudivesinh', label:'Có thể tự đi vệ sinh'},
+  {code:'hds_tudichuyen_khoigiuong', label:'Có thể tự di chuyển ra khỏi giường'},
+  {code:'hds_kiemsoat_tieutieu', label:'Có thể tự kiểm soát việc tiêu tiểu'},
+  {code:'hds_tuanuong', label:'Có thể tự ăn uống'}
+];
+var IADL_FIELDS_M4 = [ // D8.2 — mặc định "Có" khi bác sĩ không đánh dấu gì (người bình thường)
+  {code:'hdhn_nghedt', label:'Có thể tự nghe được điện thoại'},
+  {code:'hdhn_tumua_vatdung', label:'Có thể tự mua được vật dụng cần thiết'},
+  {code:'hdhn_tunauan', label:'Có thể tự nấu một bữa ăn hoàn chỉnh'},
+  {code:'hdhn_tulamviecnha', label:'Có thể tự làm được các công việc nhà'},
+  {code:'hdhn_tugiatquanao', label:'Có thể tự giặt quần áo cá nhân'},
+  {code:'hdhn_tulaixe_batxe', label:'Có thể tự lái xe hoặc tự bắt xe đi ra khỏi nhà'},
+  {code:'hdhn_tuchia_uongthuoc', label:'Có thể tự chia và uống thuốc đúng liều, đúng cữ'},
+  {code:'hdhn_tugiutien', label:'Có thể tự giữ, quản lý tiền của mình'}
+];
+var SUYYEU_FIELDS_M4 = [ // D8.3 — mặc định "Không"/mục 1 khi bác sĩ không đánh dấu gì
+  {code:'ttsy_metmoi', label:'Số lần cảm thấy mệt mỏi trong 4 tuần qua', type:'select', options:[{v:1,t:'Không/một số lần'},{v:2,t:'Tất cả mọi lúc/hầu hết thời gian'}]},
+  {code:'ttsy_khokhan_leothang', label:'Khó khăn khi leo liên tiếp 10 bậc thang không nghỉ, không trợ giúp'},
+  {code:'ttsy_khokhan_dibo', label:'Khó khăn khi tự đi bộ vài trăm mét'}
+];
+var TENGA_FIELDS_M4 = [ // D8.4 — mặc định "Không" khi bác sĩ không đánh dấu gì
+  {code:'dgtn_bite', label:'Trong năm qua có bị té không'},
+  {code:'dgtn_loso_binga', label:'Có lo sợ về việc bị té ngã'},
+  {code:'dgtn_didung', label:'Có cảm giác đi đứng không vững'}
+];
+var NHANTHUC_FIELDS_M4 = [ // D8.5 — mặc định "Không" khi bác sĩ không đánh dấu gì
+  {code:'gnt_trinho_bigiam', label:'Có thấy trí nhớ bị giảm'},
+  {code:'gnt_ghinho', label:'Ghi nhớ được 3 từ khi được yêu cầu (bông hoa, cánh cửa, cây lúa)'},
+  {code:'gnt_nho_noilai', label:'Nhớ và nói lại được 3 từ đã ghi nhớ lúc nãy'}
+];
+
+function renderMixedField(f, data, warnSet, formType) {
+  return f.type === 'select' ? renderSimpleField(f, data, warnSet, formType) : renderBool01Field(f, data, warnSet);
+}
+
+function csKcbDisplayList(formType) {
+  var refForType = STATE.refData[formType];
+  var raw = (refForType && refForType.csKCB) || [];
+  return raw.map(function (name) { return { display: name, value: name }; });
+}
+
+// Ô "CS KBCB đang điều trị" — gõ tự do có gợi ý, KHÔNG bắt buộc khớp đúng tên trong danh mục
+// (chữ viết tay tên cơ sở y tế dễ viết tắt/sai chính tả) — cùng cơ chế với ô ICD-10.
+function renderCsKcbInput(code, value) {
+  var display = (value === undefined || value === null) ? '' : String(value);
+  return '<input type="text" class="combo-input" data-code="' + code + '" data-combo="coso_kcb" data-combo-strict="0" autocomplete="off" placeholder="-- gõ tên cơ sở KCB (nếu có) --" value="' + escapeHtml(display) + '">';
+}
+
+function renderHoiBenhDiseases(data, warnSet) {
+  var html = '<div class="grid2">';
+  HOIBENH_DISEASES_M4.forEach(function (d) {
+    html += renderBool01Field({ code: d.code, label: d.label }, data, warnSet);
+    html += '<div class="field" style="margin-top:-8px;"><div class="field-hint" style="margin-bottom:3px;">CS KBCB đang điều trị (nếu có):</div>' +
+      renderCsKcbInput(d.cskcb, fieldValue({ code: d.cskcb }, data)) + '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderHoiBenhLamSang(data, warnSet, formType) {
+  STATE.comboLists.coso_kcb = csKcbDisplayList(formType);
+  var html = '';
+  html += renderBool01Field({ code: 'macbenh', label: 'Ông/bà có đang hoặc đã từng mắc ít nhất 1 trong các bệnh dưới đây không' }, data, warnSet);
+  html += renderHoiBenhDiseases(data, warnSet);
+  html += '<div class="field"><label>Bệnh khác (ghi rõ, nếu có)</label><input type="text" data-code="benh_khac_hoibenh" value="' + escapeHtml(fieldValue({ code: 'benh_khac_hoibenh' }, data)) + '"></div>';
+
+  function section(title, fields) {
+    html += '<div class="section-title" style="font-size:13px;margin-top:16px;">' + escapeHtml(title) + '</div><div class="grid3">';
+    fields.forEach(function (f) { html += renderMixedField(f, data, warnSet, formType); });
+    html += '</div>';
+  }
+  section('Tầm soát đái tháo đường (chỉ hỏi nếu có mắc Đái tháo đường ở trên)', TAMSOAT_DTD_FIELDS_M4);
+  section('Tầm soát bệnh phổi tắc nghẽn mạn tính (chỉ hỏi nếu có mắc COPD ở trên)', TAMSOAT_COPD_FIELDS_M4);
+  section('Tầm soát hen phế quản (chỉ hỏi nếu có mắc Hen phế quản ở trên)', TAMSOAT_HEN_FIELDS_M4);
+  section('Tầm soát ung thư (chỉ hỏi nếu có mắc Ung thư ở trên)', TAMSOAT_UNGTHU_FIELDS_M4);
+  section('Tầm soát trầm cảm (chỉ hỏi nếu có mắc Rối loạn trầm cảm ở trên)', TAMSOAT_TRAMCAM_FIELDS_M4);
+  section('Tầm soát lo âu (chỉ hỏi nếu có mắc Rối loạn lo âu ở trên)', TAMSOAT_LOAU_FIELDS_M4);
+  section('Hoạt động sống cơ bản hàng ngày (ADL)', ADL_FIELDS_M4);
+  section('Hoạt động sinh hoạt hàng ngày (IADL)', IADL_FIELDS_M4);
+  section('Đánh giá tình trạng suy yếu', SUYYEU_FIELDS_M4);
+  section('Đánh giá té ngã', TENGA_FIELDS_M4);
+  section('Đánh giá mức độ giảm nhận thức', NHANTHUC_FIELDS_M4);
+
+  html += '<div class="field" style="margin-top:10px;"><label>Các dấu hiệu khác phát hiện qua khám</label><input type="text" data-code="dauhieu_khac" value="' + escapeHtml(fieldValue({ code: 'dauhieu_khac' }, data)) + '"></div>';
+  return html;
+}
 
 function getHanhChinhFields(formType) { return formType === 'M4' ? HANH_CHINH_FIELDS_M4 : HANH_CHINH_FIELDS; }
 function getTheLucFields(formType) { return formType === 'M4' ? THE_LUC_FIELDS_M4 : THE_LUC_FIELDS; }
@@ -598,6 +786,15 @@ function applyBusinessRules(data, formType) {
     if (!data.taiphai_noithuong) data.taiphai_noithuong = 5;
     if (!data.taitrai_noitham) data.taitrai_noitham = 0.5;
     if (!data.taiphai_noitham) data.taiphai_noitham = 0.5;
+    // D8 (Hỏi bệnh, phần đánh giá chức năng/suy yếu/té ngã/nhận thức): nếu Gemini vẫn trả về
+    // rỗng cho CẢ MỤC (dù đã có hướng dẫn ở prompt rule #14), tự điền mặc định như người bình
+    // thường — ADL/IADL mặc định "Có" (tự lập), suy yếu/té ngã/nhận thức mặc định "Không".
+    ADL_FIELDS_M4.concat(IADL_FIELDS_M4).forEach(function (f) { if (!data[f.code]) data[f.code] = 1; });
+    if (!data.ttsy_metmoi) data.ttsy_metmoi = 1;
+    ['ttsy_khokhan_leothang', 'ttsy_khokhan_dibo'].concat(
+      TENGA_FIELDS_M4.map(function (f) { return f.code; }),
+      NHANTHUC_FIELDS_M4.map(function (f) { return f.code; })
+    ).forEach(function (code) { if (!data[code]) data[code] = 0; });
   } else {
     if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
   }
@@ -657,6 +854,35 @@ function buildFieldListText(formType) {
   lines.push('### Tiền sử bản thân (mỗi mục: 1 = Có bệnh/tật, 0 = Không)');
   TIEN_SU_BAN_THAN_FIELDS.forEach(function (f) { lines.push('- ' + f.code + ': ' + f.label); });
   addSection('Khám thể lực', getTheLucFields(formType));
+  if (formType === 'M4') {
+    lines.push('### Hỏi bệnh (file xuất riêng "Hỏi bệnh và khám lâm sàng" — chỉ có ở Mẫu 04)');
+    lines.push('- macbenh: 1 nếu ông/bà có mắc ít nhất 1 trong 14 bệnh liệt kê dưới đây, 0 nếu tất cả đều "Không"/không ghi gì.');
+    lines.push('- Với mỗi bệnh dưới đây, có 2 trường: mã bệnh (1 = Có mắc, 0 = Không) và mã "..._cskcb_name" (ghi tên cơ sở khám chữa bệnh đang điều trị bệnh đó, NẾU phiếu có ghi; để trống nếu phiếu không ghi rõ tên cơ sở, KHÔNG tự bịa tên):');
+    HOIBENH_DISEASES_M4.forEach(function (d) { lines.push('  - ' + d.code + ' / ' + d.cskcb + ': "' + d.label + '"'); });
+    lines.push('- benh_khac_hoibenh: bệnh khác ghi rõ (nếu có), để trống nếu không có.');
+    lines.push('### Các bộ câu hỏi tầm soát (CHỈ điền nếu bệnh tương ứng ở "Hỏi bệnh" phía trên = 1/Có; nếu bệnh đó = 0/Không thì để TẤT CẢ các trường trong mục tầm soát tương ứng thành chuỗi rỗng "", không suy đoán)');
+    lines.push('- Tầm soát đái tháo đường (chỉ điền nếu benh_daithaoduong = 1), mỗi mục 1 = Có, 0 = Không:');
+    TAMSOAT_DTD_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('- Tầm soát phổi tắc nghẽn mạn tính (chỉ điền nếu benh_phoi_hoibenh = 1), mỗi mục 1 = Có, 0 = Không:');
+    TAMSOAT_COPD_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('- Tầm soát hen phế quản (chỉ điền nếu benh_hen = 1), mỗi mục 1 = Có, 0 = Không:');
+    TAMSOAT_HEN_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('- Tầm soát ung thư (chỉ điền nếu benh_ungthu = 1), mỗi mục 1 = Có, 0 = Không:');
+    TAMSOAT_UNGTHU_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('- Tầm soát trầm cảm, thang PHQ-9 (chỉ điền nếu benh_roiloan_tramcam = 1), mỗi mục chọn đúng 1 trong 4 mức: 1=Gần như mọi ngày, 2=Hầu như không, 3=Hơn một nửa số ngày, 4=Một vài ngày:');
+    TAMSOAT_TRAMCAM_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('- Tầm soát lo âu, thang GAD-7 (chỉ điền nếu benh_roiloan_loau = 1), cùng thang điểm 1-4 như trên:');
+    TAMSOAT_LOAU_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('### Đánh giá chức năng/suy yếu/té ngã/nhận thức (LUÔN hỏi, không có điều kiện gì — nếu bác sĩ không đánh dấu ô nào cả trong 1 mục, xem quy tắc mặc định riêng ở dưới, KHÔNG để trống)');
+    lines.push('- Hoạt động sống cơ bản (ADL), mỗi mục 1 = Có (tự làm được), 0 = Không:');
+    ADL_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('- Hoạt động sinh hoạt hàng ngày (IADL), mỗi mục 1 = Có (tự làm được), 0 = Không:');
+    IADL_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('- Đánh giá suy yếu: ttsy_metmoi chọn 1=Không/một số lần hoặc 2=Tất cả mọi lúc/hầu hết thời gian; ttsy_khokhan_leothang và ttsy_khokhan_dibo mỗi mục 1=Có, 0=Không.');
+    lines.push('- Đánh giá té ngã, mỗi mục 1 = Có, 0 = Không: dgtn_bite ("' + TENGA_FIELDS_M4[0].label + '"), dgtn_loso_binga ("' + TENGA_FIELDS_M4[1].label + '"), dgtn_didung ("' + TENGA_FIELDS_M4[2].label + '").');
+    lines.push('- Đánh giá giảm nhận thức, mỗi mục 1 = Có, 0 = Không: gnt_trinho_bigiam ("' + NHANTHUC_FIELDS_M4[0].label + '"), gnt_ghinho ("' + NHANTHUC_FIELDS_M4[1].label + '"), gnt_nho_noilai ("' + NHANTHUC_FIELDS_M4[2].label + '").');
+    lines.push('- dauhieu_khac: các dấu hiệu khác phát hiện qua khám (ghi rõ nếu có, để trống nếu không).');
+  }
   lines.push('### Khám lâm sàng theo chuyên khoa (với mỗi chuyên khoa: ck = 1 nếu "chưa phát hiện bất thường" được tick, 0 nếu có bất thường; sobo/xacdinh = mã ICD chữ viết tay nếu có; phanloai = 1-5)');
   getSpecialties(formType).forEach(function (sp) {
     var extra = sp.tuchoi ? (', ' + sp.tuchoi + ' (1 nếu "từ chối khám" được tick, 0 nếu không)') : '';
@@ -685,13 +911,10 @@ function buildPrompt(formType) {
   var rule1 = formType === 'M4'
     ? '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; doi_tuong_kham = mã "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi, luôn có mã này trừ khi phiếu ghi rõ thêm đối tượng đặc biệt khác thì có thể thêm, không thay thế); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Với 4 trường khám thính lực (taitrai_noithuong, taiphai_noithuong, taitrai_noitham, taiphai_noitham): mục này bác sĩ thường viết rất khó đọc, nên nếu chữ viết tay không rõ ràng hoặc không chắc chắn, mặc định taitrai_noithuong = 5, taiphai_noithuong = 5, taitrai_noitham = 0.5, taiphai_noitham = 0.5 (khoảng cách chuẩn khi thính lực bình thường) — CHỈ ghi số khác nếu đọc được RÕ RÀNG 1 con số khác hẳn trên phiếu, không cần liệt kê vào "_can_xac_nhan" khi dùng mặc định này (khác với các trường khác). Mẫu 04 KHÔNG có trường "Loại khám", không cần điền. Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.'
     : '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; loai_kham = 2 (Khám Định Kỳ); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.';
-  return [
-    'Bạn đang đọc 1 file PDF scan tay "' + tenMau + '" (Thông tư Bộ Y tế Việt Nam).',
-    'Nhiệm vụ: trích xuất đầy đủ thông tin theo đúng danh sách trường bên dưới, trả về DUY NHẤT 1 JSON object, không thêm chữ giải thích, không markdown code fence.',
-    '',
-    buildFieldListText(formType),
-    '',
-    '### QUY TẮC BẮT BUỘC (rất quan trọng, áp dụng đúng như sau):',
+  var rule14M4 = formType === 'M4'
+    ? '14. Quy tắc mặc định cho phần "Đánh giá chức năng/suy yếu/té ngã/nhận thức" (D8, ở cuối phần Hỏi bệnh): nếu bác sĩ KHÔNG đánh dấu ô nào cả trong 1 mục con (bỏ trắng hoàn toàn, không tick Có cũng không tick Không) — đây là trường hợp THƯỜNG GẶP với người bình thường, không phải thiếu dữ liệu — áp dụng mặc định sau: TẤT CẢ mục trong "Hoạt động sống cơ bản (ADL)" và "Hoạt động sinh hoạt hàng ngày (IADL)" mặc định = 1 (Có, tự lập bình thường); TẤT CẢ mục trong "Đánh giá suy yếu" (ttsy_khokhan_leothang, ttsy_khokhan_dibo), "Đánh giá té ngã", "Đánh giá giảm nhận thức" mặc định = 0 (Không); riêng ttsy_metmoi mặc định = 1 (Không/một số lần). CHỈ áp dụng mặc định khi bác sĩ bỏ trắng hoàn toàn cả mục đó — nếu có đánh dấu (dù chỉ 1 vài ô khác mặc định) thì ghi đúng theo đánh dấu thật, không ghi đè bằng mặc định.'
+    : null;
+  var rules = [
     rule1,
     '2. Với MỖI chuyên khoa khám lâm sàng: nếu ô "Chưa phát hiện bất thường" được đánh dấu/tick, PHẢI trả ck=1 VÀ phanloai=1 (không suy luận phanloai từ ô phân loại nữa trong trường hợp này).',
     '3. Ở bảng "2. Tiền sử bệnh, tật của bản thân" (22 dòng, 2 cột Có/Không cho mỗi nửa bảng): nếu bác sĩ KHÔNG tick từng ô riêng lẻ mà chỉ gạch 1 đường thẳng dài xuyên suốt toàn bộ cột "Không", hiểu là TẤT CẢ các dòng trong bảng đó đều = Không (giá trị 0).',
@@ -704,8 +927,17 @@ function buildPrompt(formType) {
     '10. Trường dinh_danh_ca_nhan (Số CCCD/Định danh): CHỈ chép lại đúng các chữ số thực sự đọc được trên phiếu. TUYỆT ĐỐI KHÔNG suy đoán hoặc tự điền chữ số dựa theo nơi khám/nơi làm việc/nơi đang sinh sống (ví dụ: KHÔNG được mặc định 3 số đầu là "079" chỉ vì phiếu khám tại TP.HCM — người đến khám có thể đăng ký thường trú ở tỉnh/thành khác, chỉ đang tạm trú/làm việc tại đây). Nếu một số chữ số bị mờ/khó đọc, chỉ điền phần CHẮC CHẮN đọc được, không tự đoán bù cho đủ số; và luôn liệt kê "dinh_danh_ca_nhan" vào mảng "_can_xac_nhan" trong trường hợp này để người duyệt tự đối chiếu lại với ảnh gốc.',
     '11. Trường sdt (Số điện thoại): CHỈ chép lại đúng các chữ số thực sự đọc được trên phiếu, giữ nguyên số lượng chữ số đọc được dù ít hay nhiều. TUYỆT ĐỐI KHÔNG tự đoán, tự sửa, hoặc thêm/bớt chữ số để cho ra một số "nghe hợp lý" hơn (ví dụ KHÔNG tự đổi 1-2 số đầu cho khớp đầu số nhà mạng quen thuộc như 03x/05x/07x/08x/09x nếu nét chữ viết tay thực tế không rõ như vậy, và KHÔNG tự thêm số cho đủ 10 số nếu phiếu chỉ ghi ít hơn). Nếu một số chữ số bị mờ/khó đọc, chỉ điền phần CHẮC CHẮN đọc được, không đoán bù; và luôn liệt kê "sdt" vào mảng "_can_xac_nhan" trong trường hợp đó để người duyệt tự đối chiếu lại với ảnh gốc.',
     '12. Trường the_bhyt (Số thẻ BHYT): CHỈ chép lại đúng các KÝ TỰ (cả chữ cái lẫn chữ số) thực sự đọc được trên thẻ/phiếu, theo đúng thứ tự và số lượng ký tự có trên đó. TUYỆT ĐỐI KHÔNG tự "sửa" ký tự cho khớp định dạng quen thuộc (ví dụ không tự đổi số 0 thành chữ O hoặc ngược lại, không tự đổi số 5 thành chữ S, số 8 thành chữ B, hoặc ngược lại, chỉ vì nghĩ vị trí đó "nên" là chữ hay là số) và KHÔNG tự thêm/bớt ký tự cho đủ độ dài thường gặp nếu nét chữ/số thực tế không thể hiện rõ như vậy. Nếu một vài ký tự bị mờ/khó đọc, chỉ điền phần CHẮC CHẮN đọc được, không đoán bù; và luôn liệt kê "the_bhyt" vào mảng "_can_xac_nhan" trong trường hợp đó để người duyệt tự đối chiếu lại với ảnh gốc.',
-    '13. Trường _mau_phieu_doc_duoc: đọc đúng dòng chữ "Mẫu 03" hoặc "Mẫu 04" (hoặc số mẫu khác nếu có) in ở phần đầu trang của phiếu (thường ở góc trên, gần tiêu đề "GIẤY KHÁM SỨC KHỎE..."), trả về CHÍNH XÁC chuỗi đó (ví dụ "Mẫu 03" hoặc "Mẫu 04"). Đây là bước tự kiểm tra xem phiếu có đúng loại đang được xử lý hay không — luôn điền trường này dù các trường khác thế nào, để chuỗi rỗng "" nếu phiếu không in rõ số mẫu.',
+    '13. Trường _mau_phieu_doc_duoc: đọc đúng dòng chữ "Mẫu 03" hoặc "Mẫu 04" (hoặc số mẫu khác nếu có) in ở phần đầu trang của phiếu (thường ở góc trên, gần tiêu đề "GIẤY KHÁM SỨC KHỎE..."), trả về CHÍNH XÁC chuỗi đó (ví dụ "Mẫu 03" hoặc "Mẫu 04"). Đây là bước tự kiểm tra xem phiếu có đúng loại đang được xử lý hay không — luôn điền trường này dù các trường khác thế nào, để chuỗi rỗng "" nếu phiếu không in rõ số mẫu.'
+  ];
+  if (rule14M4) rules.push(rule14M4);
+  return [
+    'Bạn đang đọc 1 file PDF scan tay "' + tenMau + '" (Thông tư Bộ Y tế Việt Nam).',
+    'Nhiệm vụ: trích xuất đầy đủ thông tin theo đúng danh sách trường bên dưới, trả về DUY NHẤT 1 JSON object, không thêm chữ giải thích, không markdown code fence.',
     '',
+    buildFieldListText(formType),
+    '',
+    '### QUY TẮC BẮT BUỘC (rất quan trọng, áp dụng đúng như sau):',
+    rules.join('\n'),
     'Trả về JSON theo đúng cấu trúc: { "ho_ten": "...", ..., "_can_xac_nhan": ["code1","code2"], "_icd_ai_de_xuat": ["code3"] }'
   ].join('\n');
 }
@@ -1329,6 +1561,40 @@ function initResizeHandle() {
   window.addEventListener('mouseup', function () { dragging = false; handle.classList.remove('dragging'); });
 }
 
+// Cho phép kéo giãn/thu nhỏ CẢ khung duyệt (không chỉ vách ngăn 2 bên trong) — anh Hưng phản
+// ánh khung duyệt bị "bó hẹp" trên màn hình lớn dù đã bỏ giới hạn 1200px mặc định. Chỉ nhắm tới
+// desktop (chuột kéo) như anh yêu cầu, chưa làm bản chạm cho điện thoại (màn hình nhỏ khó áp
+// dụng kiểu chỉnh rộng tự do này). Nhớ lại độ rộng đã chọn qua localStorage, dùng lại cho các
+// lần mở khung duyệt sau (kể cả phiên làm việc sau).
+function initModalWidthResize() {
+  var handle = document.getElementById('modalWidthHandle');
+  var modalBox = document.querySelector('.modal-box');
+  var dragging = false;
+  var startX = 0, startWidth = 0;
+
+  try {
+    var savedWidth = localStorage.getItem('ocr_modal_width_px');
+    if (savedWidth) modalBox.style.width = savedWidth + 'px';
+  } catch (e) {}
+
+  handle.addEventListener('mousedown', function (e) {
+    dragging = true; handle.classList.add('dragging'); e.preventDefault();
+    startX = e.clientX;
+    startWidth = modalBox.getBoundingClientRect().width;
+  });
+  window.addEventListener('mousemove', function (e) {
+    if (!dragging) return;
+    var maxW = window.innerWidth - 24;
+    var newWidth = Math.max(700, Math.min(maxW, startWidth + (e.clientX - startX) * 2));
+    modalBox.style.width = newWidth + 'px';
+  });
+  window.addEventListener('mouseup', function () {
+    if (!dragging) return;
+    dragging = false; handle.classList.remove('dragging');
+    try { localStorage.setItem('ocr_modal_width_px', Math.round(modalBox.getBoundingClientRect().width)); } catch (e) {}
+  });
+}
+
 function renderPdfPager(p, activeIndex) {
   var pager = document.getElementById('pdfPager');
   var frame = document.getElementById('pdfFrame');
@@ -1402,6 +1668,11 @@ function openDetail(id) {
   html += '<div class="section-title">Khám thể lực</div><div class="grid3">';
   getTheLucFields(formType).forEach(function (f) { html += renderSimpleField(f, p.data, warnSet, formType); });
   html += '</div>';
+
+  if (formType === 'M4') {
+    html += '<div class="section-title">Hỏi bệnh và khám lâm sàng chi tiết (file xuất riêng thứ 2)</div>';
+    html += renderHoiBenhLamSang(p.data, warnSet, formType);
+  }
 
   html += '<div class="section-title">Khám lâm sàng</div>';
   html += renderClinicalTable(p.data, warnSet, formType);
@@ -1701,6 +1972,7 @@ function initUI() {
   renderTable();
   initZoomPan();
   initResizeHandle();
+  initModalWidthResize();
   initComboEvents();
   if (STATE.gasUrl) loadRefData();
 }
