@@ -798,14 +798,17 @@ function applyBusinessRules(data, formType) {
       TENGA_FIELDS_M4.map(function (f) { return f.code; }),
       NHANTHUC_FIELDS_M4.map(function (f) { return f.code; })
     ).forEach(function (code) { if (!data[code]) data[code] = 0; });
-    // Tầm soát trầm cảm/lo âu: mặc định "Hầu như không" (2) cho câu bị bỏ trống, NHƯNG CHỈ khi
-    // bệnh tương ứng thật sự = 1 (Có) — nếu bệnh đó = 0 thì không đụng tới (giữ chuỗi rỗng).
-    if (String(data.benh_roiloan_tramcam) === '1') {
-      TAMSOAT_TRAMCAM_FIELDS_M4.forEach(function (f) { if (!data[f.code]) data[f.code] = 2; });
-    }
-    if (String(data.benh_roiloan_loau) === '1') {
-      TAMSOAT_LOAU_FIELDS_M4.forEach(function (f) { if (!data[f.code]) data[f.code] = 2; });
-    }
+    // Các bộ câu hỏi tầm soát (D2-D7, tầm soát ĐTĐ/COPD/hen/ung thư/trầm cảm/lo âu): hệ thống
+    // import THẬT bắt buộc phải có giá trị ở MỌI ô, kể cả khi phiếu giấy ghi "bỏ qua nếu Không"
+    // (đã xác nhận qua thông báo lỗi "Dữ liệu không hợp lệ" từ hệ thống thật khi để trống các ô
+    // này) — nên ở đây LUÔN điền mặc định "Không có triệu chứng"/"Hầu như không" cho câu bị bỏ
+    // trống, KHÔNG PHÂN BIỆT bệnh tương ứng có = Có hay Không nữa (khác với thiết kế ban đầu chỉ
+    // mặc định khi bệnh = Có) — nếu Gemini đã đọc được giá trị thật thì vẫn giữ nguyên, đây chỉ
+    // là lưới an toàn cho ô còn trống.
+    TAMSOAT_DTD_FIELDS_M4.concat(TAMSOAT_COPD_FIELDS_M4, TAMSOAT_HEN_FIELDS_M4, TAMSOAT_UNGTHU_FIELDS_M4)
+      .forEach(function (f) { if (!data[f.code]) data[f.code] = 0; });
+    TAMSOAT_TRAMCAM_FIELDS_M4.concat(TAMSOAT_LOAU_FIELDS_M4)
+      .forEach(function (f) { if (!data[f.code]) data[f.code] = 2; });
   } else {
     if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
   }
@@ -871,18 +874,18 @@ function buildFieldListText(formType) {
     lines.push('- Với mỗi bệnh dưới đây, có 2 trường: mã bệnh (1 = Có mắc, 0 = Không) và mã "..._cskcb_name" (ghi tên cơ sở khám chữa bệnh đang điều trị bệnh đó, NẾU phiếu có ghi; để trống nếu phiếu không ghi rõ tên cơ sở, KHÔNG tự bịa tên):');
     HOIBENH_DISEASES_M4.forEach(function (d) { lines.push('  - ' + d.code + ' / ' + d.cskcb + ': "' + d.label + '"'); });
     lines.push('- benh_khac_hoibenh: bệnh khác ghi rõ (nếu có), để trống nếu không có.');
-    lines.push('### Các bộ câu hỏi tầm soát (CHỈ điền nếu bệnh tương ứng ở "Hỏi bệnh" phía trên = 1/Có; nếu bệnh đó = 0/Không thì để TẤT CẢ các trường trong mục tầm soát tương ứng thành chuỗi rỗng "", không suy đoán)');
-    lines.push('- Tầm soát đái tháo đường (chỉ điền nếu benh_daithaoduong = 1), mỗi mục 1 = Có, 0 = Không:');
+    lines.push('### Các bộ câu hỏi tầm soát (LUÔN điền đủ giá trị cho MỌI mục — hệ thống import không chấp nhận để trống. Nếu bệnh tương ứng ở "Hỏi bệnh" phía trên = 0/Không, điền toàn bộ các mục trong phần tầm soát tương ứng = 0 (Không có triệu chứng đó) chứ KHÔNG để trống; nếu bệnh đó = 1/Có, đọc đúng theo phiếu ghi, phần nào phiếu không ghi rõ thì điền 0)');
+    lines.push('- Tầm soát đái tháo đường (nếu benh_daithaoduong = 0 thì điền hết = 0), mỗi mục 1 = Có, 0 = Không:');
     TAMSOAT_DTD_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
-    lines.push('- Tầm soát phổi tắc nghẽn mạn tính (chỉ điền nếu benh_phoi_hoibenh = 1), mỗi mục 1 = Có, 0 = Không:');
+    lines.push('- Tầm soát phổi tắc nghẽn mạn tính (nếu benh_phoi_hoibenh = 0 thì điền hết = 0), mỗi mục 1 = Có, 0 = Không:');
     TAMSOAT_COPD_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
-    lines.push('- Tầm soát hen phế quản (chỉ điền nếu benh_hen = 1), mỗi mục 1 = Có, 0 = Không:');
+    lines.push('- Tầm soát hen phế quản (nếu benh_hen = 0 thì điền hết = 0), mỗi mục 1 = Có, 0 = Không:');
     TAMSOAT_HEN_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
-    lines.push('- Tầm soát ung thư (chỉ điền nếu benh_ungthu = 1), mỗi mục 1 = Có, 0 = Không:');
+    lines.push('- Tầm soát ung thư (nếu benh_ungthu = 0 thì điền hết = 0), mỗi mục 1 = Có, 0 = Không:');
     TAMSOAT_UNGTHU_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
-    lines.push('- Tầm soát trầm cảm, thang PHQ-9 (chỉ điền nếu benh_roiloan_tramcam = 1), mỗi mục chọn đúng 1 trong 4 mức: 1=Gần như mọi ngày, 2=Hầu như không, 3=Hơn một nửa số ngày, 4=Một vài ngày:');
+    lines.push('- Tầm soát trầm cảm, thang PHQ-9 (nếu benh_roiloan_tramcam = 0 thì điền hết = 2/Hầu như không), mỗi mục chọn đúng 1 trong 4 mức: 1=Gần như mọi ngày, 2=Hầu như không, 3=Hơn một nửa số ngày, 4=Một vài ngày:');
     TAMSOAT_TRAMCAM_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
-    lines.push('- Tầm soát lo âu, thang GAD-7 (chỉ điền nếu benh_roiloan_loau = 1), cùng thang điểm 1-4 như trên:');
+    lines.push('- Tầm soát lo âu, thang GAD-7 (nếu benh_roiloan_loau = 0 thì điền hết = 2/Hầu như không), cùng thang điểm 1-4 như trên:');
     TAMSOAT_LOAU_FIELDS_M4.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
     lines.push('### Đánh giá chức năng/suy yếu/té ngã/nhận thức (LUÔN hỏi, không có điều kiện gì — nếu bác sĩ không đánh dấu ô nào cả trong 1 mục, xem quy tắc mặc định riêng ở dưới, KHÔNG để trống)');
     lines.push('- Hoạt động sống cơ bản (ADL), mỗi mục 1 = Có (tự làm được), 0 = Không:');
@@ -926,7 +929,7 @@ function buildPrompt(formType) {
     ? '14. Quy tắc mặc định cho phần "Đánh giá chức năng/suy yếu/té ngã/nhận thức" (D8, ở cuối phần Hỏi bệnh): nếu bác sĩ KHÔNG đánh dấu ô nào cả trong 1 mục con (bỏ trắng hoàn toàn, không tick Có cũng không tick Không) — đây là trường hợp THƯỜNG GẶP với người bình thường, không phải thiếu dữ liệu — áp dụng mặc định sau: TẤT CẢ mục trong "Hoạt động sống cơ bản (ADL)" và "Hoạt động sinh hoạt hàng ngày (IADL)" mặc định = 1 (Có, tự lập bình thường); TẤT CẢ mục trong "Đánh giá suy yếu" (ttsy_khokhan_leothang, ttsy_khokhan_dibo), "Đánh giá té ngã", "Đánh giá giảm nhận thức" mặc định = 0 (Không); riêng ttsy_metmoi mặc định = 1 (Không/một số lần). CHỈ áp dụng mặc định khi bác sĩ bỏ trắng hoàn toàn cả mục đó — nếu có đánh dấu (dù chỉ 1 vài ô khác mặc định) thì ghi đúng theo đánh dấu thật, không ghi đè bằng mặc định.'
     : null;
   var rule15M4 = formType === 'M4'
-    ? '15. Quy tắc mặc định cho tầm soát trầm cảm (D6) và tầm soát lo âu (D7): CHỈ áp dụng khi bệnh tương ứng (benh_roiloan_tramcam cho D6, benh_roiloan_loau cho D7) = 1 (Có) — nếu bệnh đó = 0 thì vẫn để TẤT CẢ các câu trong mục đó thành chuỗi rỗng "" như đã nêu ở trên, không áp dụng mặc định. Khi bệnh tương ứng = 1: nếu bác sĩ không khoanh/tick rõ 1 trong 4 mức cho 1 hoặc vài câu cụ thể trong mục đó, mặc định câu đó = 2 (Hầu như không) — chỉ mặc định cho từng câu bị bỏ trống, câu nào bác sĩ có đánh dấu thì ghi đúng theo đánh dấu thật.'
+    ? '15. QUAN TRỌNG — hệ thống import THẬT không chấp nhận để trống các ô trong 6 bộ câu hỏi tầm soát (đái tháo đường, phổi tắc nghẽn mạn tính, hen phế quản, ung thư, trầm cảm, lo âu): nếu bệnh tương ứng ở "Hỏi bệnh" (benh_daithaoduong, benh_phoi_hoibenh, benh_hen, benh_ungthu, benh_roiloan_tramcam, benh_roiloan_loau) = 0 (Không), vẫn PHẢI điền đủ giá trị cho MỌI mục trong bộ tầm soát tương ứng — dùng 0 (Không) cho tầm soát ĐTĐ/COPD/hen/ung thư, dùng 2 (Hầu như không) cho tầm soát trầm cảm/lo âu — TUYỆT ĐỐI KHÔNG để chuỗi rỗng "". Nếu bệnh tương ứng = 1 (Có): đọc đúng theo phiếu ghi cho từng câu; câu nào phiếu không ghi rõ/bác sĩ không đánh dấu thì vẫn điền cùng giá trị mặc định nói trên (0 hoặc 2), không để trống.'
     : null;
   var rules = [
     rule1,
@@ -1215,11 +1218,13 @@ function renderSimpleField(f, data, warnSet, formType) {
 function renderBool01Field(f, data, warnSet, yesNoLabel) {
   var isWarn = warnSet.has(f.code);
   var val = fieldValue(f, data);
+  var isEmpty = (val === '' || val === undefined || val === null);
   var html = '<div class="field' + (isWarn ? ' warn' : '') + '">';
   html += '<label>' + escapeHtml(f.label) + '</label>';
   html += '<select data-code="' + f.code + '">';
-  html += '<option value="0"' + (String(val) === '0' ? ' selected' : '') + '>Không</option>';
-  html += '<option value="1"' + (String(val) === '1' ? ' selected' : '') + '>Có</option>';
+  if (isEmpty) html += '<option value="" selected>-- chưa xác nhận --</option>';
+  html += '<option value="0"' + (!isEmpty && String(val) === '0' ? ' selected' : '') + '>Không</option>';
+  html += '<option value="1"' + (!isEmpty && String(val) === '1' ? ' selected' : '') + '>Có</option>';
   html += '</select></div>';
   return html;
 }
@@ -1778,9 +1783,16 @@ function bindModalEvents(p) {
 // xuất Excel lên hệ thống thật mới báo lỗi thiếu dữ liệu. Tính theo formType vì M3/M4 có bộ
 // trường (và field nào là bắt buộc) khác nhau.
 function getRequiredFieldSections(formType) {
-  return formType === 'M4'
-    ? [HANH_CHINH_FIELDS_M4, THE_LUC_FIELDS_M4, KET_LUAN_FIELDS_M4]
-    : [HANH_CHINH_FIELDS, THE_LUC_FIELDS, KET_LUAN_FIELDS];
+  if (formType === 'M4') {
+    // Phân loại (I-V) của TỪNG chuyên khoa + Tiền sử bản thân (22 mục, gồm cả "nghiện rượu bia")
+    // bắt buộc phải có giá trị theo hệ thống import thật (xác nhận qua thông báo "Dữ liệu không
+    // hợp lệ" khi để trống các mục này) — không tự động điền mặc định vì đây là nhận định lâm
+    // sàng của bác sĩ, KHÔNG được tự suy đoán; thay vào đó chặn duyệt để buộc người xem lại và
+    // tự điền/xác nhận, giống cách "Đối tượng khám" đang được bảo vệ.
+    var phanloaiFields = SPECIALTIES_M4.map(function (sp) { return { code: sp.phanloai, label: sp.label + ' - Phân loại' }; });
+    return [HANH_CHINH_FIELDS_M4, THE_LUC_FIELDS_M4, KET_LUAN_FIELDS_M4, TIEN_SU_BAN_THAN_FIELDS, phanloaiFields];
+  }
+  return [HANH_CHINH_FIELDS, THE_LUC_FIELDS, KET_LUAN_FIELDS];
 }
 
 function validateRequiredFields(data, formType) {
