@@ -69,6 +69,7 @@
   .pdf-viewport{flex:1;overflow:hidden;position:relative;background:#222;cursor:grab;}
   .pdf-viewport.dragging{cursor:grabbing;}
   .pdf-viewport img{position:absolute;top:0;left:0;width:100%;height:auto;transform-origin:0 0;user-select:none;-webkit-user-drag:none;pointer-events:none;}
+  #pdfRotateWrap{position:absolute;inset:0;transform-origin:50% 50%;transition:transform .15s;}
   .zoom-controls{position:absolute;bottom:10px;right:10px;display:flex;gap:5px;z-index:5;}
   .zoom-controls button{background:rgba(0,0,0,.65);color:#fff;border:1px solid #777;border-radius:5px;width:30px;height:30px;cursor:pointer;font-size:16px;line-height:1;}
   .zoom-controls button:hover{background:rgba(0,0,0,.85);}
@@ -175,9 +176,11 @@
     <div class="modal-pdf" id="modalPdfPanel">
       <div class="pdf-pager" id="pdfPager"></div>
       <div class="pdf-viewport" id="pdfViewport">
-        <img id="pdfFrame" alt="Trang phiếu gốc">
+        <div id="pdfRotateWrap"><img id="pdfFrame" alt="Trang phiếu gốc"></div>
         <div class="zoom-pct" id="zoomPct">100%</div>
         <div class="zoom-controls">
+          <button type="button" id="btnRotateLeft" title="Xoay trái 90°">↺</button>
+          <button type="button" id="btnRotateRight" title="Xoay phải 90°">↻</button>
           <button type="button" id="btnZoomOut" title="Thu nhỏ">−</button>
           <button type="button" id="btnZoomReset" title="Về 100%">⟲</button>
           <button type="button" id="btnZoomIn" title="Phóng to">+</button>
@@ -795,6 +798,14 @@ function applyBusinessRules(data, formType) {
       TENGA_FIELDS_M4.map(function (f) { return f.code; }),
       NHANTHUC_FIELDS_M4.map(function (f) { return f.code; })
     ).forEach(function (code) { if (!data[code]) data[code] = 0; });
+    // Tầm soát trầm cảm/lo âu: mặc định "Hầu như không" (2) cho câu bị bỏ trống, NHƯNG CHỈ khi
+    // bệnh tương ứng thật sự = 1 (Có) — nếu bệnh đó = 0 thì không đụng tới (giữ chuỗi rỗng).
+    if (String(data.benh_roiloan_tramcam) === '1') {
+      TAMSOAT_TRAMCAM_FIELDS_M4.forEach(function (f) { if (!data[f.code]) data[f.code] = 2; });
+    }
+    if (String(data.benh_roiloan_loau) === '1') {
+      TAMSOAT_LOAU_FIELDS_M4.forEach(function (f) { if (!data[f.code]) data[f.code] = 2; });
+    }
   } else {
     if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
   }
@@ -914,6 +925,9 @@ function buildPrompt(formType) {
   var rule14M4 = formType === 'M4'
     ? '14. Quy tắc mặc định cho phần "Đánh giá chức năng/suy yếu/té ngã/nhận thức" (D8, ở cuối phần Hỏi bệnh): nếu bác sĩ KHÔNG đánh dấu ô nào cả trong 1 mục con (bỏ trắng hoàn toàn, không tick Có cũng không tick Không) — đây là trường hợp THƯỜNG GẶP với người bình thường, không phải thiếu dữ liệu — áp dụng mặc định sau: TẤT CẢ mục trong "Hoạt động sống cơ bản (ADL)" và "Hoạt động sinh hoạt hàng ngày (IADL)" mặc định = 1 (Có, tự lập bình thường); TẤT CẢ mục trong "Đánh giá suy yếu" (ttsy_khokhan_leothang, ttsy_khokhan_dibo), "Đánh giá té ngã", "Đánh giá giảm nhận thức" mặc định = 0 (Không); riêng ttsy_metmoi mặc định = 1 (Không/một số lần). CHỈ áp dụng mặc định khi bác sĩ bỏ trắng hoàn toàn cả mục đó — nếu có đánh dấu (dù chỉ 1 vài ô khác mặc định) thì ghi đúng theo đánh dấu thật, không ghi đè bằng mặc định.'
     : null;
+  var rule15M4 = formType === 'M4'
+    ? '15. Quy tắc mặc định cho tầm soát trầm cảm (D6) và tầm soát lo âu (D7): CHỈ áp dụng khi bệnh tương ứng (benh_roiloan_tramcam cho D6, benh_roiloan_loau cho D7) = 1 (Có) — nếu bệnh đó = 0 thì vẫn để TẤT CẢ các câu trong mục đó thành chuỗi rỗng "" như đã nêu ở trên, không áp dụng mặc định. Khi bệnh tương ứng = 1: nếu bác sĩ không khoanh/tick rõ 1 trong 4 mức cho 1 hoặc vài câu cụ thể trong mục đó, mặc định câu đó = 2 (Hầu như không) — chỉ mặc định cho từng câu bị bỏ trống, câu nào bác sĩ có đánh dấu thì ghi đúng theo đánh dấu thật.'
+    : null;
   var rules = [
     rule1,
     '2. Với MỖI chuyên khoa khám lâm sàng: nếu ô "Chưa phát hiện bất thường" được đánh dấu/tick, PHẢI trả ck=1 VÀ phanloai=1 (không suy luận phanloai từ ô phân loại nữa trong trường hợp này).',
@@ -930,6 +944,7 @@ function buildPrompt(formType) {
     '13. Trường _mau_phieu_doc_duoc: đọc đúng dòng chữ "Mẫu 03" hoặc "Mẫu 04" (hoặc số mẫu khác nếu có) in ở phần đầu trang của phiếu (thường ở góc trên, gần tiêu đề "GIẤY KHÁM SỨC KHỎE..."), trả về CHÍNH XÁC chuỗi đó (ví dụ "Mẫu 03" hoặc "Mẫu 04"). Đây là bước tự kiểm tra xem phiếu có đúng loại đang được xử lý hay không — luôn điền trường này dù các trường khác thế nào, để chuỗi rỗng "" nếu phiếu không in rõ số mẫu.'
   ];
   if (rule14M4) rules.push(rule14M4);
+  if (rule15M4) rules.push(rule15M4);
   return [
     'Bạn đang đọc 1 file PDF scan tay "' + tenMau + '" (Thông tư Bộ Y tế Việt Nam).',
     'Nhiệm vụ: trích xuất đầy đủ thông tin theo đúng danh sách trường bên dưới, trả về DUY NHẤT 1 JSON object, không thêm chữ giải thích, không markdown code fence.',
@@ -1483,11 +1498,21 @@ function renderThinhLucChiTiet(data, warnSet) {
 
 var ZOOM = { scale: 1, x: 0, y: 0 };
 var ZOOM_MIN = 1, ZOOM_MAX = 6;
+var pageRotation = 0; // độ xoay hiện tại của trang đang xem (0/90/180/270) — riêng theo từng trang, reset khi đổi trang
 
 function applyZoomTransform() {
   var img = document.getElementById('pdfFrame');
   img.style.transform = 'translate(' + ZOOM.x + 'px,' + ZOOM.y + 'px) scale(' + ZOOM.scale + ')';
   document.getElementById('zoomPct').textContent = Math.round(ZOOM.scale * 100) + '%';
+}
+
+function applyRotation() {
+  document.getElementById('pdfRotateWrap').style.transform = 'rotate(' + pageRotation + 'deg)';
+}
+
+function rotatePage(deltaDeg) {
+  pageRotation = (pageRotation + deltaDeg + 360) % 360;
+  applyRotation();
 }
 
 function resetZoom() {
@@ -1538,6 +1563,8 @@ function initZoomPan() {
     var r = viewport.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, 1 / 1.3);
   });
   document.getElementById('btnZoomReset').addEventListener('click', resetZoom);
+  document.getElementById('btnRotateLeft').addEventListener('click', function () { rotatePage(-90); });
+  document.getElementById('btnRotateRight').addEventListener('click', function () { rotatePage(90); });
 }
 
 // Kéo thanh chia để giãn/thu hẹp bề rộng khung xem phiếu gốc so với form bên phải.
@@ -1599,6 +1626,7 @@ function renderPdfPager(p, activeIndex) {
   var pager = document.getElementById('pdfPager');
   var frame = document.getElementById('pdfFrame');
   resetZoom();
+  pageRotation = 0; applyRotation();
   if (!p.pages || !p.pages.length) {
     // Anh xem truoc chua xong (hoac loi) — khong anh huong du lieu da doc, chi tam chua co anh de xem.
     frame.src = '';
@@ -1635,10 +1663,17 @@ function openDetail(id) {
       '</div>';
   }
 
-  if (!STATE.refData[formType]) {
+  var m4RefLoaded = !!STATE.refData[formType];
+  var csKcbMissing = formType === 'M4' && (!STATE.refData.M4 || !(STATE.refData.M4.csKCB && STATE.refData.M4.csKCB.length));
+  if (!m4RefLoaded) {
     html += '<div style="background:var(--warn);border:1px solid var(--warn-border);border-radius:6px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#92610a;">' +
       '⚠ Không tải được danh mục đầy đủ (Nghề nghiệp, Tỉnh/Thành, Phường/Xã...) — các dropdown liên quan có thể thiếu lựa chọn hoặc không tự cập nhật khi đổi Tỉnh/Thành.' +
       (STATE.refDataError ? '<br>Chi tiết: ' + escapeHtml(STATE.refDataError) : '') +
+      ' <button type="button" class="btn btn-sm btn-secondary" id="btnRetryRefData" style="margin-top:6px;">Thử tải lại danh mục</button>' +
+      '</div>';
+  } else if (csKcbMissing) {
+    html += '<div style="background:var(--warn);border:1px solid var(--warn-border);border-radius:6px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#92610a;">' +
+      '⚠ Chưa có danh mục "Cơ sở khám chữa bệnh" (ô "CS KBCB đang điều trị" bên dưới sẽ không gợi ý được) — thường do chưa cấu hình TEMPLATE_SHEET_ID_M4_B2 trong Script Properties, hoặc file B2 chưa có sheet "CoSoKhamChuaBenh". Cấu hình xong thì bấm nút bên dưới để tải lại, không cần tải lại cả trang.' +
       ' <button type="button" class="btn btn-sm btn-secondary" id="btnRetryRefData" style="margin-top:6px;">Thử tải lại danh mục</button>' +
       '</div>';
   }
