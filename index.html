@@ -301,7 +301,7 @@ var THE_LUC_FIELDS_M4 = [
   {code:'huyetaptamthu', label:'Huyết áp tâm thu', type:'number'},
   {code:'huyetaptamtruong', label:'Huyết áp tâm trương', type:'number'},
   {code:'nhiptho', label:'Nhịp thở (lần/phút)', type:'number'},
-  {code:'phanloai', label:'Phân loại thể lực chung', type:'select', options:[1,2,3,4,5]}
+  {code:'phanloai', label:'Phân loại thể lực chung', type:'select', options:['Loại I','Loại II','Loại III','Loại IV','Loại V']}
 ];
 
 // Khám lâm sàng M4: GỘP 8 mục nội khoa của M3 (Tuần hoàn/Hô hấp/Tiêu hóa/Thận-Tiết niệu/Nội
@@ -775,13 +775,21 @@ function applyBusinessRules(data, formType) {
   if (!data.city_id) data.city_id = 'Thành Phố Hồ Chí Minh';
   if (!data.ward_id) data.ward_id = 'Phường Linh Xuân';
   if (!data.dia_diem_kham) data.dia_diem_kham = 'Trạm Y Tế';
-  if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Nguồn khác';
   if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Khám Theo Hợp Đồng';
   if (formType === 'M4') {
+    // M4 (người cao tuổi): đợt khám các cụ thường do ngân sách thành phố hỗ trợ + khám sức khỏe
+    // toàn dân — khác hẳn mặc định của M3 (đa số tự chi trả/lập hồ sơ điện tử riêng lẻ).
+    if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Ngân sách thành phố hỗ trợ';
+    if (!data.ly_do_kham) data.ly_do_kham = 'Khám sức khoẻ toàn dân';
     // M4 (người cao tuổi) không có trường "Loại khám"; ngược lại đối tượng khám luôn có mã
     // "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi) — an toàn để mặc định khi trống,
     // khác với M3 (danh mục có nhiều mã hợp lý, không được đoán).
     if (!data.doi_tuong_kham) data.doi_tuong_kham = 5;
+    // Nghiện rượu, bia (tiền sử bản thân): anh Hưng xác nhận mặc định "Không" là hợp lý cho hầu
+    // hết người cao tuổi đến khám ở đây, không cần ép xác nhận tay như 21 mục còn lại của bảng
+    // tiền sử bản thân (khác với các mục khác trong TIEN_SU_BAN_THAN_FIELDS, vẫn giữ bắt buộc
+    // xác nhận vì không đủ căn cứ để mặc định an toàn như mục này).
+    if (!data.nghien_ruou_bia) data.nghien_ruou_bia = 0;
     // Khám thính lực: mục hay bị viết khó đọc — mặc định khoảng cách chuẩn khi thính lực bình
     // thường (5m nói thường, 0.5m nói thầm) nếu Gemini vẫn trả về rỗng dù đã có hướng dẫn trong
     // prompt (rule #1). Đây là lưới an toàn phía client, không ép giá trị nếu đã có sẵn.
@@ -809,18 +817,24 @@ function applyBusinessRules(data, formType) {
       .forEach(function (f) { if (!data[f.code]) data[f.code] = 0; });
     TAMSOAT_TRAMCAM_FIELDS_M4.concat(TAMSOAT_LOAU_FIELDS_M4)
       .forEach(function (f) { if (!data[f.code]) data[f.code] = 2; });
+    // Đợt khám này chỉ làm khám sơ bộ, không làm chẩn đoán xác định (anh Hưng xác nhận) — xoá
+    // trắng cứng mọi trường "…_chandoanxacdinh_icd" ở đây làm lưới an toàn, phòng trường hợp
+    // Gemini vẫn lỡ điền dù đã dặn ở prompt rule #16.
+    SPECIALTIES_M4.forEach(function (sp) { data[sp.xacdinh] = ''; });
   } else {
+    if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Nguồn khác';
+    if (!data.ly_do_kham) data.ly_do_kham = 'Lập Hồ Sơ Khám Sức khỏe Điện tử';
     if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
   }
   if (!data.danh_muc_de_nghi) data.danh_muc_de_nghi = 'Bình thường, hẹn khám định kỳ lần sau';
   if (!data.de_nghi) data.de_nghi = 'Bình thường, hẹn khám lần sau';
-  if (!data.ly_do_kham) data.ly_do_kham = 'Lập Hồ Sơ Khám Sức khỏe Điện tử';
   // Đối tượng khám (M3): KHÔNG tự đoán — danh mục thật không có mục "Khác", chọn sai mã khó
   // phát hiện lại sau này. Nếu Gemini không đọc được, phải để trống và luôn nằm trong
   // _can_xac_nhan (ép hiện cảnh báo, buộc chọn tay lúc duyệt) — xem thêm rule #4 trong buildPrompt().
   if (!Array.isArray(data.giadinh_benh_ids)) data.giadinh_benh_ids = [];
+  var phanloaiBinhThuong = formType === 'M4' ? 'Loại I' : 1; // Mẫu 04 dùng chữ "Loại I".."Loại V" (khớp bảng tra PhanLoaiSucKhoe), Mẫu 03 vẫn dùng số 1-5 như cũ
   getSpecialties(formType).forEach(function (sp) {
-    if (String(data[sp.ck]) === '1') data[sp.phanloai] = 1;
+    if (String(data[sp.ck]) === '1') data[sp.phanloai] = phanloaiBinhThuong;
   });
   return data;
 }
@@ -897,7 +911,7 @@ function buildFieldListText(formType) {
     lines.push('- Đánh giá giảm nhận thức, mỗi mục 1 = Có, 0 = Không: gnt_trinho_bigiam ("' + NHANTHUC_FIELDS_M4[0].label + '"), gnt_ghinho ("' + NHANTHUC_FIELDS_M4[1].label + '"), gnt_nho_noilai ("' + NHANTHUC_FIELDS_M4[2].label + '").');
     lines.push('- dauhieu_khac: các dấu hiệu khác phát hiện qua khám (ghi rõ nếu có, để trống nếu không).');
   }
-  lines.push('### Khám lâm sàng theo chuyên khoa (với mỗi chuyên khoa: ck = 1 nếu "chưa phát hiện bất thường" được tick, 0 nếu có bất thường; sobo/xacdinh = mã ICD chữ viết tay nếu có; phanloai = 1-5)');
+  lines.push('### Khám lâm sàng theo chuyên khoa (với mỗi chuyên khoa: ck = 1 nếu "chưa phát hiện bất thường" được tick, 0 nếu có bất thường; sobo' + (formType === 'M4' ? '' : '/xacdinh') + ' = mã ICD chữ viết tay nếu có' + (formType === 'M4' ? ' (Mẫu 04 đợt này chỉ khám sơ bộ — xem rule #16, KHÔNG điền xacdinh)' : '') + '; phanloai = ' + (formType === 'M4' ? 'CHỈ được ghi đúng 1 trong 5 chuỗi chữ sau (không dùng số): "Loại I", "Loại II", "Loại III", "Loại IV", "Loại V"' : '1-5') + ')');
   getSpecialties(formType).forEach(function (sp) {
     var extra = sp.tuchoi ? (', ' + sp.tuchoi + ' (1 nếu "từ chối khám" được tick, 0 nếu không)') : '';
     lines.push('- ' + sp.label + ': ' + sp.ck + ', ' + sp.sobo + ', ' + sp.xacdinh + ', ' + sp.phanloai + extra);
@@ -923,8 +937,11 @@ function buildFieldListText(formType) {
 function buildPrompt(formType) {
   var tenMau = formType === 'M4' ? 'Mẫu 04 - Giấy khám sức khỏe người cao tuổi' : 'Mẫu 03 - Giấy khám sức khỏe và khám sức khỏe định kỳ';
   var rule1 = formType === 'M4'
-    ? '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; doi_tuong_kham = mã "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi, luôn có mã này trừ khi phiếu ghi rõ thêm đối tượng đặc biệt khác thì có thể thêm, không thay thế); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Với 4 trường khám thính lực (taitrai_noithuong, taiphai_noithuong, taitrai_noitham, taiphai_noitham): mục này bác sĩ thường viết rất khó đọc, nên nếu chữ viết tay không rõ ràng hoặc không chắc chắn, mặc định taitrai_noithuong = 5, taiphai_noithuong = 5, taitrai_noitham = 0.5, taiphai_noitham = 0.5 (khoảng cách chuẩn khi thính lực bình thường) — CHỈ ghi số khác nếu đọc được RÕ RÀNG 1 con số khác hẳn trên phiếu, không cần liệt kê vào "_can_xac_nhan" khi dùng mặc định này (khác với các trường khác). Mẫu 04 KHÔNG có trường "Loại khám", không cần điền. Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.'
+    ? '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Ngân sách thành phố hỗ trợ"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; doi_tuong_kham = mã "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi, luôn có mã này trừ khi phiếu ghi rõ thêm đối tượng đặc biệt khác thì có thể thêm, không thay thế); ly_do_kham = "Khám sức khoẻ toàn dân"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Với 4 trường khám thính lực (taitrai_noithuong, taiphai_noithuong, taitrai_noitham, taiphai_noitham): mục này bác sĩ thường viết rất khó đọc, nên nếu chữ viết tay không rõ ràng hoặc không chắc chắn, mặc định taitrai_noithuong = 5, taiphai_noithuong = 5, taitrai_noitham = 0.5, taiphai_noitham = 0.5 (khoảng cách chuẩn khi thính lực bình thường) — CHỈ ghi số khác nếu đọc được RÕ RÀNG 1 con số khác hẳn trên phiếu, không cần liệt kê vào "_can_xac_nhan" khi dùng mặc định này (khác với các trường khác). Mẫu 04 KHÔNG có trường "Loại khám", không cần điền. Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.'
     : '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; loai_kham = 2 (Khám Định Kỳ); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.';
+  var rule16M4 = formType === 'M4'
+    ? '16. Đợt khám này CHỈ làm khám sơ bộ, KHÔNG làm chẩn đoán xác định: với MỌI chuyên khoa trong phần khám lâm sàng, CHỈ điền trường "…_chandoansobo_icd" (chẩn đoán sơ bộ) theo đúng những gì bác sĩ ghi/viết tay trên phiếu (hoặc tự đề xuất mã ICD-10 theo rule #5 nếu ck=0 mà bác sĩ không viết mã cụ thể). TUYỆT ĐỐI để chuỗi rỗng "" cho MỌI trường "…_chandoanxacdinh_icd" (chẩn đoán xác định) của TẤT CẢ chuyên khoa, KỂ CẢ khi bác sĩ có vẻ đã viết gì đó vào ô đó trên phiếu — không transcribe, không tự đề xuất mã ICD cho các trường này trong đợt khám này.'
+    : null;
   var rule14M4 = formType === 'M4'
     ? '14. Quy tắc mặc định cho phần "Đánh giá chức năng/suy yếu/té ngã/nhận thức" (D8, ở cuối phần Hỏi bệnh): nếu bác sĩ KHÔNG đánh dấu ô nào cả trong 1 mục con (bỏ trắng hoàn toàn, không tick Có cũng không tick Không) — đây là trường hợp THƯỜNG GẶP với người bình thường, không phải thiếu dữ liệu — áp dụng mặc định sau: TẤT CẢ mục trong "Hoạt động sống cơ bản (ADL)" và "Hoạt động sinh hoạt hàng ngày (IADL)" mặc định = 1 (Có, tự lập bình thường); TẤT CẢ mục trong "Đánh giá suy yếu" (ttsy_khokhan_leothang, ttsy_khokhan_dibo), "Đánh giá té ngã", "Đánh giá giảm nhận thức" mặc định = 0 (Không); riêng ttsy_metmoi mặc định = 1 (Không/một số lần). CHỈ áp dụng mặc định khi bác sĩ bỏ trắng hoàn toàn cả mục đó — nếu có đánh dấu (dù chỉ 1 vài ô khác mặc định) thì ghi đúng theo đánh dấu thật, không ghi đè bằng mặc định.'
     : null;
@@ -948,6 +965,7 @@ function buildPrompt(formType) {
   ];
   if (rule14M4) rules.push(rule14M4);
   if (rule15M4) rules.push(rule15M4);
+  if (rule16M4) rules.push(rule16M4);
   return [
     'Bạn đang đọc 1 file PDF scan tay "' + tenMau + '" (Thông tư Bộ Y tế Việt Nam).',
     'Nhiệm vụ: trích xuất đầy đủ thông tin theo đúng danh sách trường bên dưới, trả về DUY NHẤT 1 JSON object, không thêm chữ giải thích, không markdown code fence.',
@@ -1431,6 +1449,13 @@ function renderGiaDinhTimMachCheckboxes(data, warnSet) {
 function renderClinicalTable(data, warnSet, formType) {
   STATE.comboLists.icd10 = icd10DisplayList(formType);
   var specialties = getSpecialties(formType);
+  // Mẫu 04: cột "…_phanloai_name" trong sheet mẫu B1 phải khớp ĐÚNG CHỮ với bảng tra
+  // "PhanLoaiSucKhoe" (Loại I/II/III/IV/V) để công thức VLOOKUP tự tra mã số tính ra đúng — nếu
+  // ghi số 1-5 trực tiếp như trước đây, VLOOKUP không khớp được, cột mã số ẩn bị rỗng và hệ
+  // thống import báo "Dữ liệu không hợp lệ" dù ô hiển thị NHÌN như có giá trị (đã xác nhận qua
+  // mở trực tiếp file .xlsx xuất ra kiểm tra công thức). Mẫu 03 vẫn giữ nguyên số 1-5 như cũ,
+  // không đổi.
+  var phanloaiOptions = formType === 'M4' ? ['Loại I', 'Loại II', 'Loại III', 'Loại IV', 'Loại V'] : [1, 2, 3, 4, 5];
   var html = '<table class="clinical-table"><thead><tr><th>Chuyên khoa</th><th>Bình thường?</th><th>Chẩn đoán sơ bộ (ICD)</th><th>Chẩn đoán xác định (ICD)</th><th>Phân loại</th></tr></thead><tbody>';
   specialties.forEach(function (sp) {
     var ck = fieldValue({ code: sp.ck }, data);
@@ -1444,7 +1469,7 @@ function renderClinicalTable(data, warnSet, formType) {
     html += '<td><select data-code="' + sp.ck + '"><option value="1"' + (String(ck) === '1' ? ' selected' : '') + '>Bình thường</option><option value="0"' + (String(ck) === '0' ? ' selected' : '') + '>Bất thường</option></select></td>';
     html += '<td class="' + (soboWarn ? 'warn-cell' : '') + '">' + renderIcdInput(sp.sobo, sobo) + (aiIcd ? '<span class="tag-ai">AI đề xuất</span>' : '') + '</td>';
     html += '<td>' + renderIcdInput(sp.xacdinh, xacdinh) + '</td>';
-    html += '<td><select data-code="' + sp.phanloai + '">' + [1, 2, 3, 4, 5].map(function (n) { return '<option value="' + n + '"' + (String(phanloai) === String(n) ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></td>';
+    html += '<td><select data-code="' + sp.phanloai + '">' + phanloaiOptions.map(function (n) { return '<option value="' + n + '"' + (String(phanloai) === String(n) ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></td>';
     html += '</tr>';
   });
   html += '</tbody></table>';
@@ -1554,8 +1579,17 @@ function initZoomPan() {
   });
   window.addEventListener('mousemove', function (e) {
     if (!dragging) return;
-    ZOOM.x += (e.clientX - lastX); ZOOM.y += (e.clientY - lastY);
+    var dx = e.clientX - lastX, dy = e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY;
+    // ZOOM.x/y dịch chuyển ảnh ở KHÔNG GIAN CỤC BỘ bên trong #pdfRotateWrap (translate nằm bên
+    // trong transform xoay), còn dx/dy là độ dịch chuột thật trên MÀN HÌNH — nếu trang đang bị
+    // xoay (pageRotation != 0), 2 không gian này lệch nhau, kéo chuột sẽ bị NGƯỢC/LỆCH hướng so
+    // với hướng thấy trên màn hình. Xoay ngược lại vector (dx,dy) theo đúng góc đang xoay trước
+    // khi cộng vào ZOOM.x/y để tay kéo luôn đúng hướng nhìn thấy, bất kể đang xoay bao nhiêu độ.
+    var rad = pageRotation * Math.PI / 180;
+    var cosT = Math.cos(rad), sinT = Math.sin(rad);
+    ZOOM.x += dx * cosT + dy * sinT;
+    ZOOM.y += -dx * sinT + dy * cosT;
     applyZoomTransform();
   });
   window.addEventListener('mouseup', function () { dragging = false; viewport.classList.remove('dragging'); });
