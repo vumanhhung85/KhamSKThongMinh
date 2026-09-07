@@ -196,6 +196,20 @@
 // 1) CẤU HÌNH TRƯỜNG DỮ LIỆU (khớp với COLUMN_MAP trong Code.gs)
 // ============================================================
 
+// Đề nghị (Kết luận): danh mục CỐ ĐỊNH đúng 5 giá trị thật của hệ thống — khai báo Ở ĐÂY (ngay
+// từ đầu file, TRƯỚC cả HANH_CHINH_FIELDS_M4/KET_LUAN_FIELDS_M4 bên dưới có dùng tới nó) để
+// tránh đúng lỗi đã gặp: khai báo `var X = [...]` chỉ được HOIST phần khai báo, KHÔNG hoist giá
+// trị gán — nếu đặt sau nơi sử dụng, chỗ dùng sẽ đọc phải "undefined" dù biến rồi cũng có giá
+// trị đúng ngay sau đó trong file (đây chính xác là nguyên nhân Mẫu 04 bị lỗi trắng màn hình khi
+// mở form duyệt: DE_NGHI_OPTIONS từng nằm SAU KET_LUAN_FIELDS_M4).
+var DE_NGHI_OPTIONS = [
+  'Bình thường, hẹn khám định kỳ lần sau',
+  'Có yếu tố nguy cơ, cần theo dõi thêm',
+  'Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ',
+  'Chuyển tuyến, khám chuyên khoa',
+  'Khác'
+];
+
 var HANH_CHINH_FIELDS = [
   {code:'ngay_kham', label:'Ngày khám', type:'text', hint:'dd/MM/yyyy'},
   {code:'doi_tuong_kham', label:'Đối tượng khám', type:'select-doituong', hint:'Bắt buộc chọn tay nếu phiếu không ghi rõ — danh mục không có mục "Khác"'},
@@ -400,18 +414,6 @@ var MAT_THI_LUC_ROWS = [
 var MAT_KHUCXA_GROUPS = [
   { label: 'Mắt phải (MP)', docau: 'mat_docau_mp', dotru: 'mat_dotru_mp', truc: 'mat_truc_mp' },
   { label: 'Mắt trái (MT)', docau: 'mat_docau_mt', dotru: 'mat_dotru_mt', truc: 'mat_truc_mt' }
-];
-
-// Đề nghị (Kết luận): danh mục CỐ ĐỊNH đúng 5 giá trị thật của hệ thống (đối chiếu tay với ảnh
-// chụp dropdown thật) — KHÔNG lấy từ sheet "DynamicData" nữa (từng bị lẫn giá trị rác như
-// "Giảm cân" trong đó dù không phải lựa chọn hợp lệ), giống cách "Đối tượng khám" dùng danh mục
-// cố định thay vì phụ thuộc dữ liệu tự do trên sheet.
-var DE_NGHI_OPTIONS = [
-  'Bình thường, hẹn khám định kỳ lần sau',
-  'Có yếu tố nguy cơ, cần theo dõi thêm',
-  'Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ',
-  'Chuyển tuyến, khám chuyên khoa',
-  'Khác'
 ];
 
 var KET_LUAN_FIELDS = [
