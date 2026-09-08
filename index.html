@@ -273,7 +273,12 @@ var HANH_CHINH_FIELDS_M4 = [
   {code:'noi_cong_tac', label:'Nơi làm việc/công tác', type:'text', optional:true},
   {code:'noi_cong_tac_xa_phuong', label:'Phường/xã nơi công tác', type:'text', optional:true},
   {code:'ly_do_kham', label:'Lý do khám sức khỏe', type:'text', optional:true},
-  {code:'hinh_thuc_chi_tra_khamsk', label:'Hình thức chi trả', type:'select-dynamic', source:'hinhThucChiTra'},
+  // Danh sách CỐ ĐỊNH trong code, KHÔNG lấy từ sheet DynamicData nữa — dữ liệu gốc trong sheet
+  // có 1 giá trị bị thừa dấu cách ở cuối ("Ngân sách thành phố hỗ trợ ") khiến công thức VLOOKUP
+  // dò mã không khớp được (mắt thường không thấy được dấu cách thừa này), làm hệ thống import
+  // báo "Dữ liệu không hợp lệ" dù ô nhìn có vẻ đã chọn đúng. Cùng lý do đã chuyển "Đề nghị" sang
+  // danh sách cố định trước đây.
+  {code:'hinh_thuc_chi_tra_khamsk', label:'Hình thức chi trả', type:'select', options:['Ngân sách thành phố hỗ trợ','Người dân tự chi trả','Nguồn khác']},
   {code:'hinh_thuc_chi_tra_khamsk_chi_tiet', label:'Hình thức khám', type:'select-dynamic', source:'hinhThucKham'},
   {code:'nguonkhac_ghiro', label:'Ghi rõ nguồn khác', type:'text', optional:true}
 ];
@@ -775,11 +780,18 @@ function applyBusinessRules(data, formType) {
   if (!data.city_id) data.city_id = 'Thành Phố Hồ Chí Minh';
   if (!data.ward_id) data.ward_id = 'Phường Linh Xuân';
   if (!data.dia_diem_kham) data.dia_diem_kham = 'Trạm Y Tế';
-  if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Khám Theo Hợp Đồng';
   if (formType === 'M4') {
-    // M4 (người cao tuổi): đợt khám các cụ thường do ngân sách thành phố hỗ trợ + khám sức khỏe
-    // toàn dân — khác hẳn mặc định của M3 (đa số tự chi trả/lập hồ sơ điện tử riêng lẻ).
-    if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Ngân sách thành phố hỗ trợ';
+    // M4 (người cao tuổi): ĐÃ THỬ THẬT — cặp "Ngân sách thành phố hỗ trợ" + "Khám Theo Hợp
+    // Đồng" (đúng chủ trương thật của đợt khám: ngân sách tài trợ toàn dân) bị hệ thống IMPORT
+    // FILE từ chối ("(18) Vui lòng nhập hình thức chi trả KSK"), dù sửa tay qua web thì hệ
+    // thống vẫn cho lưu bình thường — tức là chỉ riêng đường IMPORT FILE có ràng buộc chặt hơn
+    // giữa 2 trường này mà chưa rõ quy luật đầy đủ. Cặp DUY NHẤT đã xác nhận IMPORT FILE THÀNH
+    // CÔNG (anh Hưng test tay, phiếu PHẠM THỊ LOAN ANH ngày 07/09): "Người dân tự chi trả" +
+    // "Tự Thực hiện" — dùng cặp này làm mặc định thay vì cặp "đúng chủ trương" ở trên, dù không
+    // phản ánh đúng thực tế nguồn kinh phí. Nếu anh Hưng xác nhận được quy luật đầy đủ (VD 1 cặp
+    // khác cũng qua được) thì báo lại để đổi cho khớp thực tế hơn.
+    if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Người dân tự chi trả';
+    if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Tự Thực hiện';
     if (!data.ly_do_kham) data.ly_do_kham = 'Khám sức khoẻ toàn dân';
     // M4 (người cao tuổi) không có trường "Loại khám"; ngược lại đối tượng khám luôn có mã
     // "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi) — an toàn để mặc định khi trống,
@@ -823,6 +835,7 @@ function applyBusinessRules(data, formType) {
     SPECIALTIES_M4.forEach(function (sp) { data[sp.xacdinh] = ''; });
   } else {
     if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Nguồn khác';
+    if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Khám Theo Hợp Đồng';
     if (!data.ly_do_kham) data.ly_do_kham = 'Lập Hồ Sơ Khám Sức khỏe Điện tử';
     if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
   }
@@ -937,7 +950,7 @@ function buildFieldListText(formType) {
 function buildPrompt(formType) {
   var tenMau = formType === 'M4' ? 'Mẫu 04 - Giấy khám sức khỏe người cao tuổi' : 'Mẫu 03 - Giấy khám sức khỏe và khám sức khỏe định kỳ';
   var rule1 = formType === 'M4'
-    ? '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Ngân sách thành phố hỗ trợ"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; doi_tuong_kham = mã "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi, luôn có mã này trừ khi phiếu ghi rõ thêm đối tượng đặc biệt khác thì có thể thêm, không thay thế); ly_do_kham = "Khám sức khoẻ toàn dân"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Với 4 trường khám thính lực (taitrai_noithuong, taiphai_noithuong, taitrai_noitham, taiphai_noitham): mục này bác sĩ thường viết rất khó đọc, nên nếu chữ viết tay không rõ ràng hoặc không chắc chắn, mặc định taitrai_noithuong = 5, taiphai_noithuong = 5, taitrai_noitham = 0.5, taiphai_noitham = 0.5 (khoảng cách chuẩn khi thính lực bình thường) — CHỈ ghi số khác nếu đọc được RÕ RÀNG 1 con số khác hẳn trên phiếu, không cần liệt kê vào "_can_xac_nhan" khi dùng mặc định này (khác với các trường khác). Mẫu 04 KHÔNG có trường "Loại khám", không cần điền. Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.'
+    ? '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Người dân tự chi trả"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Tự Thực hiện"; doi_tuong_kham = mã "Người cao tuổi" (mẫu này CHỈ dùng cho người cao tuổi, luôn có mã này trừ khi phiếu ghi rõ thêm đối tượng đặc biệt khác thì có thể thêm, không thay thế); ly_do_kham = "Khám sức khoẻ toàn dân"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Với 4 trường khám thính lực (taitrai_noithuong, taiphai_noithuong, taitrai_noitham, taiphai_noitham): mục này bác sĩ thường viết rất khó đọc, nên nếu chữ viết tay không rõ ràng hoặc không chắc chắn, mặc định taitrai_noithuong = 5, taiphai_noithuong = 5, taitrai_noitham = 0.5, taiphai_noitham = 0.5 (khoảng cách chuẩn khi thính lực bình thường) — CHỈ ghi số khác nếu đọc được RÕ RÀNG 1 con số khác hẳn trên phiếu, không cần liệt kê vào "_can_xac_nhan" khi dùng mặc định này (khác với các trường khác). Mẫu 04 KHÔNG có trường "Loại khám", không cần điền. Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.'
     : '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% bệnh nhân của trạm y tế này thuộc phường này); dia_diem_kham = "Trạm Y Tế"; hinh_thuc_chi_tra_khamsk = "Nguồn khác"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám Theo Hợp Đồng"; loai_kham = 2 (Khám Định Kỳ); ly_do_kham = "Lập Hồ Sơ Khám Sức khỏe Điện tử"; nếu phần "Đề nghị" trong Kết luận không ghi rõ (hoặc chỉ ghi chung chung là bình thường), dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau" và de_nghi = "Bình thường, hẹn khám lần sau". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.';
   var rule16M4 = formType === 'M4'
     ? '16. Đợt khám này CHỈ làm khám sơ bộ, KHÔNG làm chẩn đoán xác định: với MỌI chuyên khoa trong phần khám lâm sàng, CHỈ điền trường "…_chandoansobo_icd" (chẩn đoán sơ bộ) theo đúng những gì bác sĩ ghi/viết tay trên phiếu (hoặc tự đề xuất mã ICD-10 theo rule #5 nếu ck=0 mà bác sĩ không viết mã cụ thể). TUYỆT ĐỐI để chuỗi rỗng "" cho MỌI trường "…_chandoanxacdinh_icd" (chẩn đoán xác định) của TẤT CẢ chuyên khoa, KỂ CẢ khi bác sĩ có vẻ đã viết gì đó vào ô đó trên phiếu — không transcribe, không tự đề xuất mã ICD cho các trường này trong đợt khám này.'
@@ -950,7 +963,9 @@ function buildPrompt(formType) {
     : null;
   var rules = [
     rule1,
-    '2. Với MỖI chuyên khoa khám lâm sàng: nếu ô "Chưa phát hiện bất thường" được đánh dấu/tick, PHẢI trả ck=1 VÀ phanloai=1 (không suy luận phanloai từ ô phân loại nữa trong trường hợp này).',
+    (formType === 'M4'
+      ? '2. Với MỖI chuyên khoa khám lâm sàng: nếu ô "Chưa phát hiện bất thường" được đánh dấu/tick, PHẢI trả ck=1 VÀ phanloai="Loại I" (chuỗi chữ, KHÔNG phải số — không suy luận phanloai từ ô phân loại nữa trong trường hợp này). Nếu ck=0 (có bất thường): đọc kỹ đúng 1 trong 5 ô "Loại I/Loại II/Loại III/Loại IV/Loại V" được khoanh/tick trên phiếu (5 ô này thường rất nhỏ và sát nhau, dễ đọc nhầm) — LUÔN liệt kê "…_phanloai" của chuyên khoa đó vào mảng "_can_xac_nhan" trong trường hợp ck=0, kể cả khi bạn khá chắc chắn đã đọc đúng, để người duyệt luôn tự đối chiếu lại với ảnh gốc (mục này AI thường đọc sai hơn các mục khác).'
+      : '2. Với MỖI chuyên khoa khám lâm sàng: nếu ô "Chưa phát hiện bất thường" được đánh dấu/tick, PHẢI trả ck=1 VÀ phanloai=1 (không suy luận phanloai từ ô phân loại nữa trong trường hợp này). Nếu ck=0 (có bất thường): đọc kỹ đúng 1 trong 5 ô phân loại (1-5) được khoanh/tick trên phiếu (5 ô này thường rất nhỏ và sát nhau, dễ đọc nhầm) — LUÔN liệt kê "…_phanloai" của chuyên khoa đó vào mảng "_can_xac_nhan" trong trường hợp ck=0, kể cả khi bạn khá chắc chắn đã đọc đúng, để người duyệt luôn tự đối chiếu lại với ảnh gốc (mục này AI thường đọc sai hơn các mục khác).'),
     '3. Ở bảng "2. Tiền sử bệnh, tật của bản thân" (22 dòng, 2 cột Có/Không cho mỗi nửa bảng): nếu bác sĩ KHÔNG tick từng ô riêng lẻ mà chỉ gạch 1 đường thẳng dài xuyên suốt toàn bộ cột "Không", hiểu là TẤT CẢ các dòng trong bảng đó đều = Không (giá trị 0).',
     '4. Trường doi_tuong_kham: CHỈ điền nếu chắc chắn khớp đúng 1 mã trong danh mục liệt kê ở trên. Nếu phiếu không ghi rõ hoặc không chắc chắn khớp mã nào, để chuỗi rỗng "" và BẮT BUỘC liệt kê "doi_tuong_kham" vào mảng "_can_xac_nhan" (đây là trường bắt buộc chọn tay, không tự đoán).',
     '5. Với các trường mã ICD (…_chandoansobo_icd / …_chandoanxacdinh_icd): nếu ck=0 (có bất thường) nhưng bác sĩ không viết mã ICD cụ thể, hãy tự đề xuất 1 mã ICD-10 phù hợp nhất với mô tả lâm sàng viết tay, dựa theo bảng phân loại ICD-10 chuẩn của Bộ Y tế Việt Nam, và liệt kê tên field đó vào mảng "_icd_ai_de_xuat" trong JSON trả về.',
@@ -1142,6 +1157,52 @@ function renderTable() {
   var btnExport = document.getElementById('btnExport');
   btnExport.disabled = approvedCount === 0;
   btnExport.textContent = '⬇ Xuất Excel (' + approvedCount + ' phiếu đã duyệt)';
+  saveBatchSnapshot();
+}
+
+// ============================================================
+// 8) TỰ ĐỘNG LƯU TẠM VÀO MÁY (localStorage) — phòng mất điện/lỡ đóng tab/trình duyệt crash
+// giữa chừng khi đang nhập cả lô nhiều phiếu chưa kịp xuất Excel. CHỈ lưu phần dữ liệu đã đọc
+// + đã sửa + trạng thái duyệt (nhẹ, thuần text) — KHÔNG lưu ảnh xem trước (p.pages, vốn là
+// blob URL/base64 nặng và blob URL cũng không sống sót qua lần tải trang sau, có lưu cũng vô
+// nghĩa). Mất điện xong mở lại: ảnh xem trước trang gốc sẽ trống (phải thả lại đúng file PDF đó
+// nếu cần xem lại ảnh gốc lúc duyệt), nhưng dữ liệu đã đọc/sửa/duyệt được khôi phục nguyên vẹn,
+// không phải làm lại từ đầu qua Gemini.
+var BATCH_SNAPSHOT_KEY = 'ocr_batch_snapshot_v1';
+
+function saveBatchSnapshot() {
+  try {
+    if (!STATE.patients.length) { localStorage.removeItem(BATCH_SNAPSHOT_KEY); return; }
+    var lite = STATE.patients.map(function (p) {
+      return { id: p.id, fileName: p.fileName, status: p.status, formType: p.formType, data: p.data,
+        canXacNhan: p.canXacNhan, icdAiDeXuat: p.icdAiDeXuat, errorMsg: p.errorMsg,
+        mauMismatch: p.mauMismatch, mauPhieuDocDuoc: p.mauPhieuDocDuoc };
+    });
+    localStorage.setItem(BATCH_SNAPSHOT_KEY, JSON.stringify({ savedAt: Date.now(), nextId: NEXT_ID, patients: lite }));
+  } catch (e) { console.warn('Không lưu tạm được tiến độ (localStorage đầy/bị chặn):', e.message); }
+}
+
+function restoreBatchSnapshotIfAny() {
+  var raw;
+  try { raw = localStorage.getItem(BATCH_SNAPSHOT_KEY); } catch (e) { return; }
+  if (!raw) return;
+  var snap;
+  try { snap = JSON.parse(raw); } catch (e) { return; }
+  if (!snap || !snap.patients || !snap.patients.length) return;
+  var soPhieu = snap.patients.length;
+  var thoiGian = snap.savedAt ? new Date(snap.savedAt).toLocaleString('vi-VN') : '';
+  var ok = confirm('Phát hiện có ' + soPhieu + ' phiếu chưa xuất từ phiên làm việc trước' + (thoiGian ? ' (lưu lúc ' + thoiGian + ')' : '') +
+    ' — có thể do đóng nhầm tab, mất điện, hoặc trình duyệt bị tắt giữa chừng.\n\nKhôi phục lại để tiếp tục không? (Lưu ý: ảnh xem trước trang gốc sẽ trống, cần thả lại đúng file PDF nếu cần xem lại ảnh — dữ liệu đã đọc/duyệt vẫn còn nguyên.)\n\nBấm Hủy nếu muốn bỏ qua và xoá bản lưu tạm này.');
+  if (ok) {
+    STATE.patients = snap.patients.map(function (p) {
+      p.pages = [];
+      return p;
+    });
+    NEXT_ID = Math.max(snap.nextId || 1, STATE.patients.reduce(function (m, p) { return Math.max(m, p.id); }, 0) + 1);
+    renderTable();
+  } else {
+    try { localStorage.removeItem(BATCH_SNAPSHOT_KEY); } catch (e) {}
+  }
 }
 
 function findPatient(id) {
@@ -1669,7 +1730,7 @@ function renderPdfPager(p, activeIndex) {
   if (!p.pages || !p.pages.length) {
     // Anh xem truoc chua xong (hoac loi) — khong anh huong du lieu da doc, chi tam chua co anh de xem.
     frame.src = '';
-    frame.alt = 'Đang tạo ảnh xem trước...';
+    frame.alt = 'Không có ảnh xem trước (đang tạo, hoặc phiếu này vừa được khôi phục từ bản lưu tạm — thả lại đúng file PDF nếu cần xem ảnh gốc).';
     pager.innerHTML = '';
     pager.style.display = 'none';
     return;
@@ -1807,6 +1868,12 @@ function bindModalEvents(p) {
         '\n\nDuyệt khi còn thiếu sẽ khiến lúc xuất Excel lên hệ thống bị báo lỗi. Vui lòng điền đầy đủ rồi duyệt lại.');
       return;
     }
+    var cccdErrors = validateCCCDFormat(p.data);
+    if (cccdErrors.length) {
+      alert('Chưa thể duyệt phiếu này vì Số CCCD/định danh có vẻ SAI (không khớp quy tắc mã hóa giới tính/năm sinh của Việt Nam):\n\n- ' + cccdErrors.join('\n- ') +
+        '\n\nĐây thường là lỗi AI đọc nhầm 1 vài số — kiểm tra lại với ảnh gốc bên trái rồi sửa lại ô CCCD (hoặc Giới tính/Ngày sinh nếu đó mới là chỗ đọc sai) trước khi duyệt.');
+      return;
+    }
     p.status = 'approved';
     closeModal();
     renderTable();
@@ -1839,6 +1906,38 @@ function validateRequiredFields(data, formType) {
     });
   });
   return missing;
+}
+
+// Kiểm tra Số CCCD/định danh cá nhân đúng quy định mã hóa của Việt Nam (Thông tư 07/2021/TT-BCA)
+// — cấu trúc 12 số: AAA (3 số mã tỉnh nơi đăng ký khai sinh, KHÔNG kiểm tra vì có thể khác nơi ở
+// hiện tại) + B (1 số mã thế kỷ sinh + giới tính) + CC (2 số cuối năm sinh) + XXXXXX (6 số ngẫu
+// nhiên, không kiểm tra được). Kiểm tra NGAY lúc duyệt thay vì để hệ thống import trả lỗi về.
+function validateCCCDFormat(data) {
+  var errors = [];
+  var cccd = String(data.dinh_danh_ca_nhan || '').trim();
+  if (!cccd) return errors; // để trống thì validateRequiredFields đã bắt riêng rồi
+  if (!/^\d{12}$/.test(cccd)) {
+    errors.push('Số CCCD/định danh "' + cccd + '" phải đúng 12 chữ số (hiện có ' + cccd.length + ' ký tự) — kiểm tra lại có bị dư/thiếu số không.');
+    return errors;
+  }
+  var m = String(data.ngay_sinh || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  var gioiTinh = String(data.gioi_tinh || '');
+  if (!m || (gioiTinh !== '1' && gioiTinh !== '2')) return errors; // thiếu ngày sinh/giới tính hợp lệ thì không đối chiếu được, để validateRequiredFields lo phần đó
+
+  var year = parseInt(m[3], 10);
+  var centuryIndex = Math.floor(year / 100) - 19; // 1900-1999->0, 2000-2099->1, 2100-2199->2...
+  var expectedDigit4 = centuryIndex * 2 + (gioiTinh === '2' ? 1 : 0); // chẵn=Nam, lẻ=Nữ, +2 mỗi thế kỷ
+  var actualDigit4 = parseInt(cccd.charAt(3), 10);
+  var expectedYY = String(year % 100).padStart ? String(year % 100).padStart(2, '0') : ('0' + (year % 100)).slice(-2);
+  var actualYY = cccd.substring(4, 6);
+
+  if (actualDigit4 !== expectedDigit4) {
+    errors.push('Số CCCD "' + cccd + '": số thứ 4 (đang là ' + cccd.charAt(3) + ') không khớp quy tắc mã hóa giới tính+thế kỷ sinh — với ' + (gioiTinh === '2' ? 'Nữ' : 'Nam') + ' sinh năm ' + year + ' phải là ' + expectedDigit4 + '. Kiểm tra lại CCCD hoặc Giới tính/Ngày sinh có đọc nhầm không.');
+  }
+  if (actualYY !== expectedYY) {
+    errors.push('Số CCCD "' + cccd + '": 2 số thứ 5-6 (đang là ' + actualYY + ') không khớp 2 số cuối năm sinh (' + expectedYY + '). Kiểm tra lại CCCD hoặc Ngày sinh có đọc nhầm không.');
+  }
+  return errors;
 }
 
 function onCityChanged(p) {
@@ -1943,7 +2042,17 @@ function exportBatch() {
   gasRequest('exportBatch', { records: records }).then(function (res) {
     if (res.status !== 'success') throw new Error(res.message || 'Xuất thất bại.');
     // Có thể ra NHIỀU file nếu đợt duyệt lẫn cả phiếu M3 và M4 — mỗi loại 1 file .xlsx riêng.
-    (res.files || []).forEach(function (f) { downloadBase64File(f.base64, f.fileName); });
+    // 1 file trong đợt có thể lỗi riêng (VD chưa đồng bộ kịp khi xuất) mà không làm mất các file
+    // khác — hiện rõ lỗi + link Google Sheet dự phòng (dữ liệu chắc chắn đã có ở đó) cho file đó.
+    var errs = [];
+    (res.files || []).forEach(function (f) {
+      if (f.error) {
+        errs.push(f.formType + ': ' + f.error + (f.driveFileUrl ? '\n→ Mở trực tiếp: ' + f.driveFileUrl : ''));
+      } else {
+        downloadBase64File(f.base64, f.fileName);
+      }
+    });
+    if (errs.length) alert('Một số file xuất bị lỗi:\n\n' + errs.join('\n\n'));
   }).catch(function (err) {
     alert('Xuất Excel thất bại: ' + err.message);
   }).finally(function () {
@@ -2050,6 +2159,7 @@ function initUI() {
 
   document.getElementById('btnExport').addEventListener('click', exportBatch);
 
+  restoreBatchSnapshotIfAny();
   renderTable();
   initZoomPan();
   initResizeHandle();
