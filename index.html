@@ -537,54 +537,152 @@ function renderHoiBenhLamSang(data, warnSet, formType) {
 }
 
 // ============================================================
-// 1d) CÁC TRƯỜNG RIÊNG CHO MẪU 02 (HỌC SINH 6-18 TUỔI)
+// 1d) CÁC TRƯỜNG RIÊNG CHO MẪU 02 (HỌC SINH 6-18 TUỔI) — FILE ĐÚNG
 // ------------------------------------------------------------
-// Anh Hưng xác nhận: hệ thống import CHƯA hỗ trợ nhập cận lâm sàng cho Mẫu 02 — chỉ có phần
-// hành chính này (khớp đúng vai trò file "B1" của M4, nhưng KHÔNG có file B2 tương ứng). Lấy
-// đúng danh mục hợp lệ từ data validation ẩn trong file mẫu gốc, không suy đoán.
+// LƯU Ý: đây là bản viết lại HOÀN TOÀN sau khi anh Hưng gửi đúng file mẫu (file trước gửi nhầm
+// chỉ có phần hành chính). File đúng có đầy đủ: tiêm chủng (23 mũi), sàng lọc ADHD (18 câu),
+// sàng lọc tự kỷ/ASD (10 câu), khám cột sống, khám lâm sàng 9 chuyên khoa (không có Ngoại
+// khoa/Da liễu như M3, có Tâm Thần riêng) — quy mô ngang hoặc hơn cả M4 (B1+B2 gộp lại).
 // ============================================================
-var DOI_TUONG_KHAM_M2_OPTIONS = [
-  'Người cao tuổi', 'Người khuyết tật', 'Người thuộc hộ nghèo, cận nghèo', 'Người có công',
-  'Người mắc bệnh mạn tính', 'Người sống tại vùng đồng bào dân tộc thiểu số và miền núi',
-  'Người sống tại vùng có điều kiện kinh tế - xã hội khó khăn, đặc biệt khó khăn',
-  'Người sống tại xã đảo', 'Người sống tại đặc khu', 'Trẻ dưới 6 tuổi đi học (trẻ đang học mầm non)',
-  'Trẻ dưới 6 tuổi không đi học', 'Trẻ từ đủ 6 tuổi đến 18 tuổi đi học (lớp 1 đến lớp 12)',
-  'Trẻ từ đủ 6 tuổi đến 18 tuổi không đi học', 'Sinh Viên, học viên',
-  'Người lao động chính thức (theo pháp luật về an toàn, vệ sinh lao động)',
-  'Người lao động phi chính thức', 'Các đối tượng khác', 'Nhân khẩu đặc biệt',
-  'Diện bảo vệ sức khỏe trung ương', 'Diện bảo vệ sức khỏe thành phố'
-];
 var DIA_DIEM_KHAM_M2_OPTIONS = ['Cơ Sở Khám Chữa Bệnh', 'Khám Lưu Động', 'Trạm Y Tế', 'KSK Tại Nhà', 'Trường Học'];
 var HINH_THUC_CHI_TRA_M2_OPTIONS = ['Ngân sách thành phố hỗ trợ', 'Người sử dụng lao động chi trả', 'Người dân tự chi trả', 'Nguồn khác'];
-var HINH_THUC_NN_HO_TRO_M2_OPTIONS = ['Khám theo hợp đồng', 'Khám phi địa giới', 'Tự Thực hiện'];
+var HINH_THUC_KHAM_M2_OPTIONS = ['Khám theo hợp đồng', 'Khám phi địa giới', 'Tự Thực hiện'];
 var MOI_QUAN_HE_TRE_OPTIONS = ['Cha', 'Mẹ', 'Ông bà', 'Anh chị', 'Họ hàng', 'Khác'];
+var TIEM_CHUNG_OPTIONS = ['Đã tiêm', 'Chưa tiêm', 'Không nhớ rõ'];
+var ADHD_SCALE_OPTIONS = ['Không có', 'Thỉnh thoảng', 'Thường xuyên'];
+var ASD_SCALE_OPTIONS = ['Hoàn toàn đồng ý', 'Có chút đồng ý', 'Có chút không đồng ý', 'Hoàn toàn không đồng ý'];
+var PHAN_LOAI_M2_OPTIONS = ['Loại I', 'Loại II', 'Loại III', 'Loại IV', 'Loại V'];
 
 var HANH_CHINH_FIELDS_M2 = [
   {code:'ngay_kham', label:'Ngày khám', type:'text', hint:'dd/MM/yyyy'},
-  {code:'doi_tuong_kham', label:'Đối tượng khám', type:'select', options:DOI_TUONG_KHAM_M2_OPTIONS, hint:'Mặc định "Trẻ từ đủ 6 tuổi đến 18 tuổi đi học" nếu phiếu không ghi rõ khác'},
+  {code:'doi_tuong_kham', label:'Đối tượng khám', type:'select-doituong', hint:'Mẫu 02 bắt buộc chọn 1 trong 2 mã "Trẻ từ đủ 6-18 tuổi đi học/không đi học" — có thể thêm mã đặc biệt khác nếu phiếu ghi rõ, không thay thế'},
   {code:'dia_diem_kham', label:'Địa điểm khám', type:'select', options:DIA_DIEM_KHAM_M2_OPTIONS},
   {code:'dinh_danh_ca_nhan', label:'Số CCCD/Định danh', type:'text', hint:'chỉ ghi đúng số đọc được trên phiếu, KHÔNG suy đoán số theo nơi khám/nơi làm việc'},
   {code:'ho_ten', label:'Họ và tên', type:'text', hint:'luôn viết IN HOA toàn bộ, có dấu'},
   {code:'ngay_sinh', label:'Ngày sinh', type:'text', hint:'dd/MM/yyyy'},
   {code:'gioi_tinh', label:'Giới tính', type:'select', options:[{v:1,t:'Nam'},{v:2,t:'Nữ'},{v:3,t:'Chưa xác định'}]},
-  {code:'dan_toc_id', label:'Dân tộc', type:'select-dynamic', source:'danToc'},
+  {code:'dan_toc_id', label:'Dân tộc', type:'select-dynamic', source:'danToc', optional:true},
   {code:'nhom_mau_id', label:'Nhóm máu', type:'select', options:['','A','O','B','AB'], optional:true},
-  {code:'yeu_to_nhom_mau_id', label:'Yếu tố Rh', type:'select', options:[{v:'',t:''},{v:'Rh-',t:'Rh-'},{v:'Rh+',t:'Rh+'}], optional:true},
+  {code:'yeu_to_nhom_mau_id', label:'Yếu tố Rh', type:'select', options:[{v:'',t:''},{v:1,t:'Rh-'},{v:2,t:'Rh+'}], optional:true},
   {code:'the_bhyt', label:'Số thẻ BHYT', type:'text', optional:true, hint:'chỉ ghi đúng ký tự đọc được (cả 2 chữ cái đầu lẫn dãy số), KHÔNG tự sửa cho khớp định dạng "đẹp"'},
   {code:'sdt', label:'Số điện thoại', type:'text', hint:'chỉ ghi đúng số đọc được trên phiếu, KHÔNG tự đoán/sửa số cho ra số điện thoại "nghe hợp lý"'},
   {code:'dia_chi_hien_tai', label:'Chỗ ở hiện tại', type:'text'},
-  {code:'ward_id', label:'Phường/Xã', type:'select-dynamic', source:'phuongXaM2', searchable:true},
+  {code:'city_id', label:'Tỉnh/Thành phố', type:'select-dynamic', source:'tinh', searchable:true},
+  {code:'ward_id', label:'Phường/Xã', type:'select-ward', searchable:true},
   {code:'ly_do_kham', label:'Lý do khám sức khỏe', type:'text', optional:true},
-  {code:'truong_phuong_xa', label:'Phường/xã của trường', type:'select-dynamic', source:'phuongXaM2', searchable:true},
-  {code:'truong_ten_truong', label:'Tên trường', type:'text-combo', comboKey:'truong', placeholder:'-- gõ tên trường --'},
-  {code:'truong_lop', label:'Lớp', type:'text'},
+  {code:'tre_co_di_hoc', label:'Trẻ có đi học không', type:'select', options:[{v:1,t:'Có'},{v:0,t:'Không'}], hint:'Nếu "Không" thì Phường/xã của trường + Tên trường + Lớp bên dưới có thể để trống'},
+  {code:'truong_phuong_xa', label:'Phường/xã của trường', type:'select-dynamic', source:'truongPhuongXa', searchable:true, optional:true},
+  {code:'truong_ten_truong', label:'Tên trường', type:'text-combo', comboKey:'truong', placeholder:'-- gõ tên trường --', optional:true},
+  {code:'truong_lop', label:'Lớp', type:'text', optional:true},
   {code:'nguoi_giam_ho', label:'Người giám hộ', type:'text'},
   {code:'nguoi_giam_ho_cccd', label:'CCCD người giám hộ', type:'text', hint:'CCCD của người giám hộ (KHÁC với CCCD của trẻ) — không áp quy tắc kiểm tra giới tính/năm sinh của trẻ vào ô này'},
   {code:'nguoi_giam_ho_mqh', label:'Mối quan hệ với trẻ', type:'select', options:MOI_QUAN_HE_TRE_OPTIONS},
   {code:'nguoi_giam_ho_sdt', label:'SĐT người giám hộ', type:'text'},
-  {code:'hinh_thuc_chi_tra_ksk', label:'Hình thức chi trả', type:'select', options:HINH_THUC_CHI_TRA_M2_OPTIONS},
-  {code:'hinh_thuc_nha_nuoc_ho_tro', label:'Hình thức nhà nước hỗ trợ', type:'select', options:HINH_THUC_NN_HO_TRO_M2_OPTIONS},
+  {code:'hinh_thuc_chi_tra_khamsk', label:'Hình thức chi trả', type:'select', options:HINH_THUC_CHI_TRA_M2_OPTIONS},
+  {code:'hinh_thuc_chi_tra_khamsk_chi_tiet', label:'Hình thức khám', type:'select', options:HINH_THUC_KHAM_M2_OPTIONS},
   {code:'nguon_khac', label:'Ghi rõ nguồn khác', type:'text', optional:true}
+];
+
+// Tiền sử bệnh CÁ NHÂN của trẻ (khác với tiền sử GIA ĐÌNH ở AC/AD, dùng chung TIEN_SU_GIA_DINH_OPTIONS
+// đã có sẵn — xác nhận đúng 9 mục/ID giống hệt M3). Danh mục 7 mục này lấy từ đúng sheet đối
+// chiếu qua ID (lưu ý: 2 sheet "TienSuGiaDinh"/"TienSuBanThan" trong file gốc bị đặt tên CHÉO
+// nhau so với nội dung thật — đã đối chiếu ID để dùng đúng chiều, xem ghi chú trong Code.gs).
+var TIEN_SU_BENH_CANHAN_M2_OPTIONS = [
+  {id: 3067, label: 'Ung thư nguyên bào võng mạc'},
+  {id: 3068, label: 'Tim bẩm sinh'},
+  {id: 3069, label: 'Động kinh'},
+  {id: 3070, label: 'Hen'},
+  {id: 3071, label: 'Rối loạn giảm chú ý - tăng động'},
+  {id: 3072, label: 'Dị ứng, ghi rõ'},
+  {id: 3074, label: 'Khác, ghi rõ'}
+];
+
+var TIEM_CHUNG_FIELDS_M2 = [
+  {code:'tiem_lao_m1', label:'Lao (mũi 1)'},
+  {code:'tiem_vgb_m1', label:'Viêm gan B (mũi 1)'},
+  {code:'tiem_vgb_m2', label:'Viêm gan B (mũi 2)'},
+  {code:'tiem_vgb_m3', label:'Viêm gan B (mũi 3)'},
+  {code:'tiem_vgb_m4', label:'Viêm gan B (mũi 4)'},
+  {code:'tiem_bhuvhg_m1', label:'Bạch hầu-Uốn ván-Ho gà (mũi 1)'},
+  {code:'tiem_bhuvhg_m2', label:'Bạch hầu-Uốn ván-Ho gà (mũi 2)'},
+  {code:'tiem_bhuvhg_m3', label:'Bạch hầu-Uốn ván-Ho gà (mũi 3)'},
+  {code:'tiem_bhuvhg_m4', label:'Bạch hầu-Uốn ván-Ho gà (mũi 4)'},
+  {code:'tiem_bailiet_uong_l1', label:'Bại liệt uống (liều 1)'},
+  {code:'tiem_bailiet_uong_l2', label:'Bại liệt uống (liều 2)'},
+  {code:'tiem_bailiet_uong_l3', label:'Bại liệt uống (liều 3)'},
+  {code:'tiem_bailiet_tiem_m1', label:'Bại liệt tiêm (mũi 1)'},
+  {code:'tiem_bailiet_tiem_m2', label:'Bại liệt tiêm (mũi 2)'},
+  {code:'tiem_hib_m1', label:'Hib (mũi 1)'},
+  {code:'tiem_hib_m2', label:'Hib (mũi 2)'},
+  {code:'tiem_hib_m3', label:'Hib (mũi 3)'},
+  {code:'tiem_soi_m1', label:'Sởi (mũi 1)'},
+  {code:'tiem_soi_m2', label:'Sởi (mũi 2)'},
+  {code:'tiem_soi_rubella_m1', label:'Sởi Rubella (mũi 1)'},
+  {code:'tiem_vnnb_m1', label:'Viêm não Nhật Bản (mũi 1)'},
+  {code:'tiem_vnnb_m2', label:'Viêm não Nhật Bản (mũi 2)'},
+  {code:'tiem_vnnb_m3', label:'Viêm não Nhật Bản (mũi 3)'}
+];
+
+var ADHD_FIELDS_M2 = [
+  {code:'adhd_thieu_can_than', label:'Thường không chú ý chi tiết/mắc lỗi do thiếu cẩn thận'},
+  {code:'adhd_kho_duy_tri_chu_y', label:'Thường gặp khó khăn khi duy trì sự chú ý'},
+  {code:'adhd_khong_lang_nghe', label:'Thường có vẻ không chú ý lắng nghe khi nói chuyện trực tiếp'},
+  {code:'adhd_khong_theo_huong_dan', label:'Thường không thực hiện theo được các hướng dẫn'},
+  {code:'adhd_kho_to_chuc', label:'Thường gặp khó khăn khi tổ chức thực hiện nhiệm vụ'},
+  {code:'adhd_ne_tranh_tap_trung', label:'Thường né tránh/miễn cưỡng tham gia việc cần tập trung'},
+  {code:'adhd_danh_mat_do_dung', label:'Thường đánh mất vật dụng cần thiết cho hoạt động'},
+  {code:'adhd_de_bi_xao_lang', label:'Thường dễ bị xao lãng bởi kích thích bên ngoài'},
+  {code:'adhd_hay_quen', label:'Thường hay quên trong hoạt động hằng ngày'},
+  {code:'adhd_bon_chon_tay_chan', label:'Thường bồn chồn, tay chân không yên khi ngồi'},
+  {code:'adhd_roi_khoi_cho', label:'Thường rời khỏi chỗ ngồi khi cần ngồi tại chỗ'},
+  {code:'adhd_chay_nhay_lang_xang', label:'Thường chạy tới lui/leo trèo quá mức không phù hợp'},
+  {code:'adhd_kho_choi_yen_lang', label:'Thường khó khăn khi cần giữ yên lặng lúc chơi'},
+  {code:'adhd_ban_ron_hoat_dong', label:'Thường "bận rộn hoạt động" như không biết mệt'},
+  {code:'adhd_noi_qua_nhieu', label:'Thường nói quá nhiều'},
+  {code:'adhd_noi_bat_cau_tra_loi', label:'Thường nói bật ra câu trả lời khi câu hỏi chưa xong'},
+  {code:'adhd_kho_cho_doi', label:'Thường gặp khó khăn khi phải chờ đợi tới lượt'},
+  {code:'adhd_ngat_loi_xen_ngang', label:'Thường ngắt lời người khác hoặc chen ngang'}
+];
+
+var ASD_FIELDS_M2 = [
+  {code:'asd_chu_y_am_thanh_nho', label:'Trẻ thường chú ý âm thanh nhỏ khi người khác không để ý'},
+  {code:'asd_tap_trung_toan_canh', label:'Trẻ tập trung vào toàn bộ bức tranh hơn chi tiết nhỏ'},
+  {code:'asd_theo_doi_hoi_thoai', label:'Trong nhóm, trẻ dễ theo dõi cuộc trò chuyện của nhiều người'},
+  {code:'asd_de_dang_thay_doi_hoat_dong', label:'Trẻ thấy dễ dàng khi đổi tới lui giữa các hoạt động'},
+  {code:'asd_kho_duy_tri_tro_chuyen', label:'Trẻ không biết cách duy trì trò chuyện với bạn đồng trang lứa'},
+  {code:'asd_gioi_tan_gau', label:'Trẻ giỏi trong các cuộc tán gẫu, nói chuyện phiếm xã hội'},
+  {code:'asd_kho_hieu_tam_ly_nhan_vat', label:'Khi đọc truyện, trẻ khó trình bày ý muốn/cảm xúc nhân vật'},
+  {code:'asd_thich_choi_gia_vo', label:'Trước lớp 1, trẻ thích chơi trò sắm vai giả vờ'},
+  {code:'asd_the_hien_cam_xuc_mat', label:'Trẻ dễ dàng trình bày suy nghĩ/cảm xúc qua nét mặt'},
+  {code:'asd_kho_khan_ket_ban', label:'Trẻ thấy khó khăn khi kết bạn mới'}
+];
+
+var SPECIALTIES_M2 = [
+  {label:'Tuần hoàn', ck:'noikhoa_chuaphathienbatthuong', sobo:'noikhoa_chandoansobo_icd', xacdinh:'noikhoa_chandoanxacdinh_icd', phanloai:'noikhoa_phanloai'},
+  {label:'Hô hấp', ck:'hohap_chuaphathienbatthuong', sobo:'hohap_chandoansobo_icd', xacdinh:'hohap_chandoanxacdinh_icd', phanloai:'hohap_phanloai'},
+  {label:'Tiêu hóa', ck:'tieuhoa_chuaphathienbatthuong', sobo:'tieuhoa_chandoansobo_icd', xacdinh:'tieuhoa_chandoanxacdinh_icd', phanloai:'tieuhoa_phanloai'},
+  {label:'Thận - Tiết niệu', ck:'thantietnieu_chuaphathienbatthuong', sobo:'thantietnieu_chandoansobo_icd', xacdinh:'thantietnieu_chandoanxacdinh_icd', phanloai:'thantietnieu_phanloai'},
+  {label:'Thần kinh', ck:'thankinh_chuaphathienbatthuong', sobo:'thankinh_chandoansobo_icd', xacdinh:'thankinh_chandoanxacdinh_icd', phanloai:'thankinh_phanloai'},
+  {label:'Mắt', ck:'mat_chuaphathienbatthuong', sobo:'mat_chandoansobo_icd', xacdinh:'mat_chandoanxacdinh_icd', phanloai:'mat_phanloai'},
+  {label:'Tai - Mũi - Họng', ck:'tmh_chuaphathienbatthuong', sobo:'tmh_chandoansobo_icd', xacdinh:'tmh_chandoanxacdinh_icd', phanloai:'tmh_phanloai'},
+  {label:'Răng - Hàm - Mặt', ck:'rhm_chuaphathienbatthuong', sobo:'rhm_chandoansobo_icd', xacdinh:'rhm_chandoanxacdinh_icd', phanloai:'rhm_phanloai'},
+  {label:'Tâm thần', ck:'tamthan_chuaphathienbatthuong', sobo:'tamthan_chandoansobo_icd', xacdinh:'tamthan_chandoanxacdinh_icd', phanloai:'tamthan_phanloai'}
+];
+
+var COTSONG_FIELDS_M2 = [
+  {code:'congcotsong', label:'Còng cột sống', type:'select', options:[{v:1,t:'Gù'},{v:2,t:'Ưỡn'},{v:3,t:'Bẹt'}], optional:true},
+  {code:'veocotsong', label:'Vẹo cột sống', type:'select', options:[{v:1,t:'Hình chữ S'},{v:2,t:'Hình chữ C'}], optional:true},
+  {code:'mucdo_veocotsong', label:'Mức độ vẹo cột sống', type:'select', options:[{v:1,t:'Nhẹ (góc xoay thân < 5 độ)'},{v:2,t:'Vừa (5-7 độ)'},{v:3,t:'Nặng (góc xoay thân > 7 độ)'}], optional:true}
+];
+
+var THE_LUC_FIELDS_M2 = [
+  {code:'chieu_cao', label:'Chiều cao (cm)', type:'number'},
+  {code:'can_nang', label:'Cân nặng (kg)', type:'number'},
+  {code:'mach', label:'Mạch (lần/phút)', type:'number'},
+  {code:'huyet_ap_tt', label:'Huyết áp tâm thu (mmHg)', type:'number'},
+  {code:'huyet_ap_ttr', label:'Huyết áp tâm trương (mmHg)', type:'number'},
+  {code:'nhip_tho', label:'Nhịp thở (lần/phút)', type:'number'},
+  {code:'phan_loai_the_luc', label:'Phân loại thể lực', type:'select', options:PHAN_LOAI_M2_OPTIONS}
 ];
 
 function getHanhChinhFields(formType) {
@@ -592,9 +690,25 @@ function getHanhChinhFields(formType) {
   if (formType === 'M2') return HANH_CHINH_FIELDS_M2;
   return HANH_CHINH_FIELDS;
 }
-function getTheLucFields(formType) { return formType === 'M4' ? THE_LUC_FIELDS_M4 : THE_LUC_FIELDS; }
-function getSpecialties(formType) { return formType === 'M4' ? SPECIALTIES_M4 : SPECIALTIES; }
-function getKetLuanFields(formType) { return formType === 'M4' ? KET_LUAN_FIELDS_M4 : KET_LUAN_FIELDS; }
+function getTheLucFields(formType) {
+  if (formType === 'M4') return THE_LUC_FIELDS_M4;
+  if (formType === 'M2') return THE_LUC_FIELDS_M2;
+  return THE_LUC_FIELDS;
+}
+function getSpecialties(formType) {
+  if (formType === 'M4') return SPECIALTIES_M4;
+  if (formType === 'M2') return SPECIALTIES_M2;
+  return SPECIALTIES;
+}
+function getKetLuanFields(formType) {
+  if (formType === 'M4') return KET_LUAN_FIELDS_M4;
+  if (formType === 'M2') return KET_LUAN_FIELDS_M2;
+  return KET_LUAN_FIELDS;
+}
+var KET_LUAN_FIELDS_M2 = [
+  {code:'danh_muc_de_nghi', label:'Đề nghị', type:'select', options:DE_NGHI_OPTIONS},
+  {code:'de_nghi', label:'Ghi rõ đề nghị', type:'text', optional:true}
+];
 
 // Tiền sử bệnh gia đình: 9 mục riêng biệt theo đúng sheet "Bệnh Tiền Sử Gia Đình"
 // (đối chiếu với giao diện hệ thống nhập tay — không phải 1 câu Có/Không + ghi chú tự do).
@@ -907,30 +1021,32 @@ function applyBusinessRules(data, formType) {
     // hỗ trợ toàn bộ học sinh, khám theo hợp đồng) — CHƯA test qua import file thật như M4 từng
     // gặp (cặp "ngân sách"+"hợp đồng" của M4 bị import từ chối dù đúng chủ trương) — nếu Mẫu 02
     // cũng gặp lỗi tương tự khi xuất thật, báo lại để đổi cặp mặc định cho khớp thực tế.
-    if (!data.hinh_thuc_chi_tra_ksk) data.hinh_thuc_chi_tra_ksk = 'Ngân sách thành phố hỗ trợ';
-    if (!data.hinh_thuc_nha_nuoc_ho_tro) data.hinh_thuc_nha_nuoc_ho_tro = 'Khám theo hợp đồng';
+    if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Ngân sách thành phố hỗ trợ';
+    if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Khám theo hợp đồng';
     // "Đối tượng khám": mẫu này chủ yếu dùng cho học sinh ĐANG ĐI HỌC (phiếu luôn có mục
-    // Trường/Lớp bắt buộc điền) — an toàn để mặc định, khác M3 (danh mục nhiều mã hợp lý ngang
-    // nhau, không đoán được).
-    if (!data.doi_tuong_kham) data.doi_tuong_kham = 'Trẻ từ đủ 6 tuổi đến 18 tuổi đi học (lớp 1 đến lớp 12)';
+    // Trường/Lớp bắt buộc điền) — an toàn để mặc định mã 16 khi trống, khác M3 (danh mục nhiều
+    // mã hợp lý ngang nhau, không đoán được). Dùng MÃ SỐ (giống M3/M4), không phải chuỗi chữ.
+    if (!data.doi_tuong_kham) data.doi_tuong_kham = 16;
+    if (!Array.isArray(data.tien_su_benh_ids)) data.tien_su_benh_ids = [];
+    // Tiêm chủng: nếu Gemini vẫn để trống 1 vài mũi dù đã dặn ở prompt, mặc định "Không nhớ rõ"
+    // (an toàn hơn "Chưa tiêm" — không khẳng định điều chưa chắc chắn).
+    TIEM_CHUNG_FIELDS_M2.forEach(function (f) { if (!data[f.code]) data[f.code] = 'Không nhớ rõ'; });
   } else {
     if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Nguồn khác';
     if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Khám Theo Hợp Đồng';
     if (!data.ly_do_kham) data.ly_do_kham = 'Lập Hồ Sơ Khám Sức khỏe Điện tử';
     if (!data.loai_kham) data.loai_kham = 2; // mặc định Khám Định Kỳ (đa số phiếu ở trạm y tế là khám định kỳ, không phải khám tuyển)
   }
-  if (!data.danh_muc_de_nghi && formType !== 'M2') data.danh_muc_de_nghi = 'Bình thường, hẹn khám định kỳ lần sau';
-  if (!data.de_nghi && formType !== 'M2') data.de_nghi = 'Bình thường, hẹn khám lần sau';
+  if (!data.danh_muc_de_nghi) data.danh_muc_de_nghi = 'Bình thường, hẹn khám định kỳ lần sau';
+  if (!data.de_nghi) data.de_nghi = 'Bình thường, hẹn khám lần sau';
   // Đối tượng khám (M3): KHÔNG tự đoán — danh mục thật không có mục "Khác", chọn sai mã khó
   // phát hiện lại sau này. Nếu Gemini không đọc được, phải để trống và luôn nằm trong
   // _can_xac_nhan (ép hiện cảnh báo, buộc chọn tay lúc duyệt) — xem thêm rule #4 trong buildPrompt().
   if (!Array.isArray(data.giadinh_benh_ids)) data.giadinh_benh_ids = [];
-  if (formType !== 'M2') {
-    var phanloaiBinhThuong = formType === 'M4' ? 'Loại I' : 1; // Mẫu 04 dùng chữ "Loại I".."Loại V" (khớp bảng tra PhanLoaiSucKhoe), Mẫu 03 vẫn dùng số 1-5 như cũ
-    getSpecialties(formType).forEach(function (sp) {
-      if (String(data[sp.ck]) === '1') data[sp.phanloai] = phanloaiBinhThuong;
-    });
-  }
+  var phanloaiBinhThuong = (formType === 'M4' || formType === 'M2') ? 'Loại I' : 1; // Mẫu 04/02 dùng chữ "Loại I".."Loại V" (khớp bảng tra PhanLoaiSK), Mẫu 03 vẫn dùng số 1-5 như cũ
+  getSpecialties(formType).forEach(function (sp) {
+    if (String(data[sp.ck]) === '1') data[sp.phanloai] = phanloaiBinhThuong;
+  });
   return data;
 }
 
@@ -966,9 +1082,57 @@ function buildFieldListText(formType) {
     });
   }
   addSection('Hành chính', getHanhChinhFields(formType));
-  // Mẫu 02 (học sinh) CHỈ có phần hành chính — dừng ở đây, không có tiền sử/thể lực/khám lâm
-  // sàng/kết luận như M3/M4 (hệ thống import chưa hỗ trợ cận lâm sàng cho mẫu này).
-  if (formType === 'M2') return lines.join('\n');
+  if (formType === 'M2') {
+    lines.push('### Tiền sử bệnh của gia đình (ông/bà/bố/mẹ/anh chị em ruột)');
+    lines.push('- giadinh_benh_ids: mảng số nguyên, map tên bệnh được ghi (nếu "Có" được tick) vào đúng các mã sau, có thể chọn nhiều mã: ' + TIEN_SU_GIA_DINH_OPTIONS.map(function (o) { return o.id + '=' + o.label; }).join(', ') + '. Nếu "Không" được tick hoặc không ghi gì, trả về mảng rỗng [].');
+    lines.push('- giadinh_danhsachbenh_icd: mã ICD kèm theo (nếu phiếu có ghi), nhiều mã cách nhau bởi dấu phẩy, để trống nếu không có.');
+    lines.push('### Sản khoa/Tiền sử sinh (riêng cho Mẫu 02)');
+    lines.push('- sankhoa_chuaphathienbatthuong: 1 = Bình thường, 0 = Không bình thường.');
+    lines.push('- sankhoa_ghichu: ghi chú bất thường (nếu ck=0 và phiếu có ghi rõ), để trống nếu không có.');
+    lines.push('- mebibenh: mẹ bị bệnh gì trong thời kỳ mang thai (nếu phiếu có ghi rõ tên bệnh), để trống nếu không có.');
+    lines.push('### Tiêm chủng (mỗi mũi CHỈ 1 trong 3 giá trị: "Đã tiêm", "Chưa tiêm", "Không nhớ rõ" — nếu phiếu để trống ô nào, dùng "Không nhớ rõ", KHÔNG để chuỗi rỗng)');
+    TIEM_CHUNG_FIELDS_M2.forEach(function (f) { lines.push('- ' + f.code + ': ' + f.label); });
+    lines.push('### Tiền sử bệnh CỦA TRẺ (khác tiền sử gia đình ở trên)');
+    lines.push('- tien_su_benh_ids: mảng số nguyên, map đúng các mã sau (có thể chọn nhiều mã), để trống mảng [] nếu không có mục nào: ' + TIEN_SU_BENH_CANHAN_M2_OPTIONS.map(function (o) { return o.id + '=' + o.label; }).join(', ') + '.');
+    lines.push('- benh_khac: tên bệnh khác (nếu chọn mã "Khác, ghi rõ" ở trên) kèm mã ICD nếu có, để trống nếu không có.');
+    lines.push('- benh_dangdieutri: hiện tại có đang điều trị bệnh gì không (ghi rõ nếu phiếu có ghi), để trống nếu không có.');
+    addSection('Khám thể lực', getTheLucFields(formType));
+    lines.push('### Sàng lọc Tăng động giảm chú ý - ADHD (chỉ điền nếu phiếu CÓ làm phần đánh giá này, để trống toàn bộ nếu phiếu không có phần này)');
+    lines.push('- adhd_ngay_danh_gia: ngày đánh giá (dd/MM/yyyy), để trống nếu không có.');
+    lines.push('- Mỗi câu dưới đây CHỈ 1 trong 3 giá trị: "Không có", "Thỉnh thoảng", "Thường xuyên":');
+    ADHD_FIELDS_M2.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('- adhd_ket_qua: kết quả đánh giá (ghi rõ theo phiếu, VD "Có nguy cơ"/"Không có nguy cơ"), để trống nếu không có.');
+    lines.push('- adhd_ghi_chu: ghi chú thêm (nếu có).');
+    lines.push('### Sàng lọc Tự kỷ - ASD (chỉ điền nếu phiếu CÓ làm phần đánh giá này, để trống toàn bộ nếu phiếu không có phần này)');
+    lines.push('- asd_ngay_danh_gia: ngày đánh giá (dd/MM/yyyy), để trống nếu không có.');
+    lines.push('- Mỗi câu dưới đây CHỈ 1 trong 4 giá trị: "Hoàn toàn đồng ý", "Có chút đồng ý", "Có chút không đồng ý", "Hoàn toàn không đồng ý":');
+    ASD_FIELDS_M2.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
+    lines.push('- asd_ket_qua: kết quả đánh giá (ghi rõ theo phiếu), để trống nếu không có.');
+    lines.push('- asd_ghi_chu: ghi chú thêm (nếu có).');
+    lines.push('### Khám lâm sàng theo chuyên khoa (với mỗi chuyên khoa: ck = 1 nếu "chưa phát hiện bất thường" được tick, 0 nếu có bất thường; sobo/xacdinh = mã ICD chữ viết tay nếu có; phanloai = CHỈ được ghi đúng 1 trong 5 chuỗi chữ sau, không dùng số: "Loại I", "Loại II", "Loại III", "Loại IV", "Loại V")');
+    SPECIALTIES_M2.forEach(function (sp) { lines.push('- ' + sp.label + ': ' + sp.ck + ', ' + sp.sobo + ', ' + sp.xacdinh + ', ' + sp.phanloai); });
+    lines.push('### Khám cột sống (riêng Mẫu 02)');
+    lines.push('- cotsong_binhthuong: 1 = Bình thường, 0 = Bất thường.');
+    lines.push('- congcotsong: CHỈ điền nếu có còng cột sống, 1 = Gù, 2 = Ưỡn, 3 = Bẹt, để trống nếu không có.');
+    lines.push('- veocotsong: CHỈ điền nếu có vẹo cột sống, 1 = Hình chữ S, 2 = Hình chữ C, để trống nếu không có.');
+    lines.push('- mucdo_veocotsong: CHỈ điền nếu veocotsong có giá trị, 1 = Nhẹ (góc xoay thân < 5 độ), 2 = Vừa (5-7 độ), 3 = Nặng (> 7 độ), để trống nếu không có.');
+    lines.push('- cotsong_cls_khac_ck: 1 nếu có bất thường cột sống khác phát hiện qua cận lâm sàng, 0 nếu không.');
+    lines.push('- cotsong_cls_khac_sobo, cotsong_cls_khac_xacdinh: mã ICD nếu cotsong_cls_khac_ck = 1 và phiếu có ghi mã, để trống nếu không có.');
+    lines.push('- khamcanlamsang_khac: các phát hiện cận lâm sàng khác (ghi rõ nếu có), để trống nếu không có.');
+    lines.push('### Khám thị lực (Mẫu 02 chỉ có 2 mục, KHÔNG có kính lỗ/khúc xạ như M3/M4), mỗi ô là số nguyên trên thang /10, để trống nếu form không ghi');
+    lines.push('- mat_khongkinh_mp, mat_khongkinh_mt: Không kính, mắt phải/trái.');
+    lines.push('- mat_cokinh_mp, mat_cokinh_mt: Có kính, mắt phải/trái.');
+    lines.push('### Khám thính lực, đơn vị mét, để trống nếu form không ghi');
+    lines.push('- tai_noithuong_tt, tai_noithuong_tp: Tai trái/phải, nói thường.');
+    lines.push('- tai_noitham_tt, tai_noitham_tp: Tai trái/phải, nói thầm.');
+    lines.push('### Xét nghiệm/Chẩn đoán hình ảnh (ghi tóm tắt theo phiếu, để trống nếu không có)');
+    lines.push('- ngay_xetnghiem: ngày xét nghiệm (dd/MM/yyyy).');
+    lines.push('- donvi_xetnghiem: đơn vị thực hiện xét nghiệm.');
+    lines.push('- kq_xetnghiem: kết quả xét nghiệm huyết học/sinh hóa/nước tiểu... (tóm tắt).');
+    lines.push('- kq_cdha: kết quả chẩn đoán hình ảnh (X-quang...).');
+    addSection('Kết luận', getKetLuanFields(formType));
+    return lines.join('\n');
+  }
   lines.push('### Tiền sử bệnh của gia đình (ông/bà/bố/mẹ/anh chị em ruột)');
   lines.push('- giadinh_benh_ids: mảng số nguyên, map tên bệnh được ghi (nếu "Có" được tick) vào đúng các mã sau, có thể chọn nhiều mã: ' + TIEN_SU_GIA_DINH_OPTIONS.map(function (o) { return o.id + '=' + o.label; }).join(', ') + '. Nếu "Không" được tick hoặc không ghi gì, trả về mảng rỗng [].');
   if (formType === 'M4') {
@@ -1032,9 +1196,9 @@ function buildFieldListText(formType) {
   return lines.join('\n');
 }
 
-// Mẫu 02 (học sinh) có bộ trường và quy tắc HOÀN TOÀN RIÊNG (chỉ hành chính, không có tiền
-// sử/thể lực/khám lâm sàng/kết luận như M3/M4) — tách hẳn thành hàm riêng cho gọn, không cố gò
-// vào chung logic buildPrompt() của M3/M4 bên dưới.
+// Mẫu 02 (học sinh) có bộ trường và quy tắc HOÀN TOÀN RIÊNG — tách hẳn thành hàm riêng cho gọn,
+// không cố gò vào chung logic buildPrompt() của M3/M4 bên dưới. Quy mô ngang hoặc hơn M4
+// (B1+B2 gộp lại): đủ tiêm chủng, sàng lọc ADHD/ASD, khám cột sống, khám lâm sàng 9 chuyên khoa.
 function buildPromptM2() {
   return [
     'Bạn đang đọc 1 file PDF scan tay "Mẫu 02 - Giấy khám sức khỏe học sinh (6 đến dưới 18 tuổi)" (Thông tư Bộ Y tế Việt Nam).',
@@ -1043,20 +1207,22 @@ function buildPromptM2() {
     buildFieldListText('M2'),
     '',
     '### QUY TẮC BẮT BUỘC (rất quan trọng, áp dụng đúng như sau):',
-    '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: dia_diem_kham = "Trạm Y Tế"; ward_id = "Phường Linh Xuân" (vì >98% học sinh của trạm y tế này thuộc phường này); doi_tuong_kham = "Trẻ từ đủ 6 tuổi đến 18 tuổi đi học (lớp 1 đến lớp 12)" (mẫu này chủ yếu dùng cho học sinh đang đi học — nếu phiếu ghi rõ trẻ KHÔNG đi học thì đổi đúng thành "Trẻ từ đủ 6 tuổi đến 18 tuổi không đi học"); hinh_thuc_chi_tra_ksk = "Ngân sách thành phố hỗ trợ"; hinh_thuc_nha_nuoc_ho_tro = "Khám theo hợp đồng". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.',
-    '2. Trường dinh_danh_ca_nhan (Số CCCD/Định danh CỦA HỌC SINH — KHÁC với nguoi_giam_ho_cccd của người giám hộ, không nhầm lẫn 2 trường này): CHỈ chép lại đúng chữ số thực sự đọc được trên phiếu. TUYỆT ĐỐI KHÔNG suy đoán hoặc tự điền chữ số dựa theo nơi khám/nơi ở/nơi học. Nếu một số chữ số bị mờ/khó đọc, chỉ điền phần CHẮC CHẮN đọc được, không tự đoán bù cho đủ số; và luôn liệt kê "dinh_danh_ca_nhan" vào mảng "_can_xac_nhan" trong trường hợp này.',
-    '3. Tương tự, trường nguoi_giam_ho_cccd (CCCD người giám hộ): CHỈ chép đúng chữ số đọc được, không suy đoán, không nhầm với CCCD của học sinh.',
-    '4. Trường sdt và nguoi_giam_ho_sdt: CHỈ chép đúng số điện thoại đọc được trên phiếu, KHÔNG tự đoán/sửa số cho ra số điện thoại "nghe hợp lý" (không tự đổi đầu số, không tự thêm/bớt chữ số). Nếu phiếu chỉ ghi 1 số điện thoại duy nhất (trường hợp phổ biến với học sinh nhỏ tuổi), ưu tiên hiểu đó là số của người giám hộ (điền vào nguoi_giam_ho_sdt), chỉ điền cả 2 trường nếu phiếu thực sự ghi rõ 2 số khác nhau cho 2 người.',
-    '5. Trường the_bhyt (Số thẻ BHYT): CHỈ chép lại đúng các KÝ TỰ (cả chữ cái lẫn chữ số) thực sự đọc được, theo đúng thứ tự và số lượng ký tự có trên đó. TUYỆT ĐỐI KHÔNG tự "sửa" ký tự cho khớp định dạng quen thuộc (không tự đổi 0↔O, 5↔S, 8↔B chỉ vì đoán vị trí đó "nên" là chữ hay là số). Ký tự nào mờ chỉ điền phần chắc chắn, luôn liệt kê vào "_can_xac_nhan".',
-    '6. Trường doi_tuong_kham: CHỈ điền nếu chắc chắn khớp ĐÚNG NGUYÊN VĂN 1 chuỗi trong danh mục liệt kê ở phần "Hành chính" phía trên (không viết tắt, không đổi chữ). Nếu phiếu không ghi rõ hoặc không chắc chắn khớp chuỗi nào, dùng mặc định ở rule #1 và liệt kê "doi_tuong_kham" vào mảng "_can_xac_nhan" để người duyệt tự xác nhận lại.',
-    '7. Trường truong_ten_truong (Tên trường): ghi đúng tên trường viết trên phiếu dù không chắc chắn 100% đúng chính tả — không để trống nếu phiếu có ghi tên trường, và liệt kê vào "_can_xac_nhan" nếu chữ viết tay không rõ ràng.',
-    '8. Với BẤT KỲ trường nào chữ viết tay không rõ ràng khiến bạn không chắc chắn, vẫn điền giá trị đoán tốt nhất có thể nhưng liệt kê tên field đó vào mảng "_can_xac_nhan" trong JSON trả về.',
-    '9. Định dạng ngày: dd/MM/yyyy. Trường số: chỉ ghi số thuần, không kèm đơn vị.',
-    '10. Nếu 1 trường hoàn toàn không có thông tin trong phiếu và không suy luận được, để chuỗi rỗng "".',
-    '11. Nếu có nhiều hơn 1 file/ảnh được đính kèm cùng lúc, hiểu rằng TẤT CẢ đều là các trang khác nhau của CÙNG 1 phiếu của 1 học sinh — tổng hợp thông tin từ tất cả các trang đó vào 1 JSON object duy nhất, không tách thành nhiều học sinh.',
-    '12. Trường _mau_phieu_doc_duoc: đọc đúng dòng chữ "Mẫu 02" (hoặc số mẫu khác nếu có) in ở phần đầu trang của phiếu, trả về CHÍNH XÁC chuỗi đó. Đây là bước tự kiểm tra xem phiếu có đúng loại đang được xử lý hay không — luôn điền trường này dù các trường khác thế nào, để chuỗi rỗng "" nếu phiếu không in rõ số mẫu.',
+    '1. Nếu phiếu KHÔNG ghi rõ, dùng các mặc định sau: dia_diem_kham = "Trạm Y Tế"; city_id = "Thành Phố Hồ Chí Minh", ward_id = "Phường Linh Xuân" (vì >98% học sinh của trạm y tế này thuộc phường này); doi_tuong_kham = mã "Trẻ từ đủ 6 tuổi đến 18 tuổi đi học (lớp 1 đến lớp 12)" (mẫu này chủ yếu dùng cho học sinh đang đi học — nếu phiếu ghi rõ trẻ KHÔNG đi học thì đổi đúng thành mã "...không đi học"); hinh_thuc_chi_tra_khamsk = "Ngân sách thành phố hỗ trợ"; hinh_thuc_chi_tra_khamsk_chi_tiet = "Khám theo hợp đồng"; nếu phần "Đề nghị" trong Kết luận không ghi rõ, dùng danh_muc_de_nghi = "Bình thường, hẹn khám định kỳ lần sau". Nếu phiếu CÓ ghi rõ khác thì ưu tiên đọc theo phiếu, không dùng mặc định.',
+    '2. Trường doi_tuong_kham: CHỈ điền nếu chắc chắn khớp đúng 1 mã trong danh mục liệt kê ở phần "Hành chính" phía trên. Nếu không chắc chắn, dùng mặc định ở rule #1 và liệt kê "doi_tuong_kham" vào mảng "_can_xac_nhan".',
+    '3. Trường dinh_danh_ca_nhan (Số CCCD/Định danh CỦA HỌC SINH — KHÁC với nguoi_giam_ho_cccd của người giám hộ, không nhầm lẫn 2 trường này): CHỈ chép lại đúng chữ số thực sự đọc được trên phiếu. TUYỆT ĐỐI KHÔNG suy đoán hoặc tự điền chữ số dựa theo nơi khám/nơi ở/nơi học. Nếu một số chữ số bị mờ/khó đọc, chỉ điền phần CHẮC CHẮN đọc được; luôn liệt kê "dinh_danh_ca_nhan" vào mảng "_can_xac_nhan" trong trường hợp này.',
+    '4. Tương tự, trường nguoi_giam_ho_cccd (CCCD người giám hộ): CHỈ chép đúng chữ số đọc được, không suy đoán, không nhầm với CCCD của học sinh.',
+    '5. Trường sdt và nguoi_giam_ho_sdt: CHỈ chép đúng số điện thoại đọc được trên phiếu, KHÔNG tự đoán/sửa số cho ra số điện thoại "nghe hợp lý". Nếu phiếu chỉ ghi 1 số điện thoại duy nhất (trường hợp phổ biến với học sinh nhỏ tuổi), ưu tiên hiểu đó là số của người giám hộ (điền vào nguoi_giam_ho_sdt), chỉ điền cả 2 trường nếu phiếu thực sự ghi rõ 2 số khác nhau.',
+    '6. Trường the_bhyt (Số thẻ BHYT): CHỈ chép lại đúng các KÝ TỰ (cả chữ cái lẫn chữ số) thực sự đọc được, theo đúng thứ tự và số lượng. TUYỆT ĐỐI KHÔNG tự "sửa" ký tự cho khớp định dạng quen thuộc (không tự đổi 0↔O, 5↔S, 8↔B). Ký tự nào mờ chỉ điền phần chắc chắn, luôn liệt kê vào "_can_xac_nhan".',
+    '7. Trường truong_ten_truong (Tên trường): ghi đúng tên trường viết trên phiếu dù không chắc chắn 100% đúng chính tả — không để trống nếu phiếu có ghi tên trường, và liệt kê vào "_can_xac_nhan" nếu chữ viết tay không rõ ràng. Nếu trường "tre_co_di_hoc" = 0 (Không đi học), để trống toàn bộ truong_phuong_xa/truong_ten_truong/truong_lop.',
+    '8. Với MỖI chuyên khoa khám lâm sàng: nếu ô "Chưa phát hiện bất thường" được tick, PHẢI trả ck=1 VÀ phanloai="Loại I" (chuỗi chữ, KHÔNG phải số). Nếu ck=0 (có bất thường): đọc kỹ đúng 1 trong 5 ô "Loại I/II/III/IV/V" được khoanh (5 ô rất nhỏ, dễ đọc nhầm) — LUÔN liệt kê "…_phanloai" của chuyên khoa đó vào mảng "_can_xac_nhan" khi ck=0, kể cả khi khá chắc chắn.',
+    '9. Với các trường mã ICD (…_chandoansobo_icd / …_chandoanxacdinh_icd): nếu ck=0 nhưng bác sĩ không viết mã ICD cụ thể, tự đề xuất 1 mã ICD-10 phù hợp nhất theo bảng phân loại ICD-10 chuẩn của Bộ Y tế Việt Nam, và liệt kê tên field đó vào mảng "_icd_ai_de_xuat".',
+    '10. Với BẤT KỲ trường nào chữ viết tay không rõ ràng khiến bạn không chắc chắn, vẫn điền giá trị đoán tốt nhất có thể nhưng liệt kê tên field đó vào mảng "_can_xac_nhan".',
+    '11. Định dạng ngày: dd/MM/yyyy. Trường số: chỉ ghi số thuần, không kèm đơn vị.',
+    '12. Nếu 1 trường hoàn toàn không có thông tin trong phiếu và không suy luận được, để chuỗi rỗng "" (riêng các mục tiêm chủng: dùng "Không nhớ rõ" thay vì để trống, xem phần Tiêm chủng ở trên).',
+    '13. Nếu có nhiều hơn 1 file/ảnh được đính kèm cùng lúc, hiểu rằng TẤT CẢ đều là các trang khác nhau của CÙNG 1 phiếu của 1 học sinh — tổng hợp thông tin từ tất cả các trang đó vào 1 JSON object duy nhất, không tách thành nhiều học sinh.',
+    '14. Trường _mau_phieu_doc_duoc: đọc đúng dòng chữ "Mẫu 02" (hoặc số mẫu khác nếu có) in ở phần đầu trang của phiếu, trả về CHÍNH XÁC chuỗi đó, để chuỗi rỗng "" nếu phiếu không in rõ số mẫu.',
     '',
-    'Trả về JSON theo đúng cấu trúc: { "ho_ten": "...", ..., "_can_xac_nhan": ["code1","code2"] }'
+    'Trả về JSON theo đúng cấu trúc: { "ho_ten": "...", ..., "_can_xac_nhan": ["code1","code2"], "_icd_ai_de_xuat": ["code3"] }'
   ].join('\n');
 }
 
@@ -1615,6 +1781,76 @@ function renderGiaDinhCheckboxes(data) {
   return html;
 }
 
+// Tiền sử bệnh CÁ NHÂN của trẻ (M2) — cùng kiểu checkbox-nhiều-lựa-chọn như tiền sử gia đình,
+// nhưng lưu riêng mảng p.data.tien_su_benh_ids (khác biến giadinh_benh_ids) vì đây là 2 khái
+// niệm khác nhau (bệnh CỦA TRẺ, không phải của gia đình).
+function renderTienSuBenhCaNhanCheckboxes(data) {
+  var ids = data.tien_su_benh_ids || [];
+  var html = '<div class="grid3">';
+  TIEN_SU_BENH_CANHAN_M2_OPTIONS.forEach(function (opt) {
+    var checked = ids.indexOf(opt.id) !== -1 ? ' checked' : '';
+    html += '<div class="field"><label style="font-weight:400;"><input type="checkbox" data-tiensubenh-id="' + opt.id + '"' + checked + '> ' + escapeHtml(opt.label) + '</label></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+// Khối Tiêm chủng (23 mũi, M2) — mỗi mũi 1 select 3 lựa chọn cố định.
+function renderTiemChungFields(data, warnSet, formType) {
+  var html = '<div class="grid3">';
+  TIEM_CHUNG_FIELDS_M2.forEach(function (f) {
+    html += renderSimpleField({ code: f.code, label: f.label, type: 'select', options: TIEM_CHUNG_OPTIONS }, data, warnSet, formType);
+  });
+  html += '</div>';
+  return html;
+}
+
+// Sàng lọc ADHD (18 câu, M2) — thang 3 mức, có ngày đánh giá + kết quả + ghi chú riêng.
+function renderAdhdFields(data, warnSet, formType) {
+  var html = '<div class="grid2">';
+  html += renderSimpleField({ code: 'adhd_ngay_danh_gia', label: 'Ngày đánh giá', type: 'text', optional: true, hint: 'dd/MM/yyyy' }, data, warnSet, formType);
+  html += '</div><div class="grid3">';
+  ADHD_FIELDS_M2.forEach(function (f) {
+    html += renderSimpleField({ code: f.code, label: f.label, type: 'select', options: ADHD_SCALE_OPTIONS, optional: true }, data, warnSet, formType);
+  });
+  html += '</div><div class="grid2">';
+  html += renderSimpleField({ code: 'adhd_ket_qua', label: 'Kết quả đánh giá', type: 'text', optional: true }, data, warnSet, formType);
+  html += renderSimpleField({ code: 'adhd_ghi_chu', label: 'Ghi chú', type: 'text', optional: true }, data, warnSet, formType);
+  html += '</div>';
+  return html;
+}
+
+// Sàng lọc Tự kỷ/ASD (10 câu, M2) — thang 4 mức đồng ý/không đồng ý.
+function renderAsdFields(data, warnSet, formType) {
+  var html = '<div class="grid2">';
+  html += renderSimpleField({ code: 'asd_ngay_danh_gia', label: 'Ngày đánh giá', type: 'text', optional: true, hint: 'dd/MM/yyyy' }, data, warnSet, formType);
+  html += '</div><div class="grid3">';
+  ASD_FIELDS_M2.forEach(function (f) {
+    html += renderSimpleField({ code: f.code, label: f.label, type: 'select', options: ASD_SCALE_OPTIONS, optional: true }, data, warnSet, formType);
+  });
+  html += '</div><div class="grid2">';
+  html += renderSimpleField({ code: 'asd_ket_qua', label: 'Kết quả đánh giá', type: 'text', optional: true }, data, warnSet, formType);
+  html += renderSimpleField({ code: 'asd_ghi_chu', label: 'Ghi chú', type: 'text', optional: true }, data, warnSet, formType);
+  html += '</div>';
+  return html;
+}
+
+// Khám cột sống (M2) — cổng Bình thường/Bất thường + 3 mục con (còng/vẹo/mức độ vẹo) + khám
+// cận lâm sàng khác riêng cho cột sống (ck/sobo/xacdinh dạng ICD, giống các chuyên khoa khác).
+function renderCotSongFields(data, warnSet, formType) {
+  var html = renderBool01Field({ code: 'cotsong_binhthuong', label: 'Cột sống bình thường' }, data, warnSet);
+  html += '<div class="grid3">';
+  COTSONG_FIELDS_M2.forEach(function (f) { html += renderSimpleField(f, data, warnSet, formType); });
+  html += '</div>';
+  html += '<div class="grid2">';
+  html += renderBool01Field({ code: 'cotsong_cls_khac_ck', label: 'Có bất thường cột sống khác qua cận lâm sàng' }, data, warnSet);
+  html += '</div><div class="grid2">';
+  html += '<div class="field"><label>Chẩn đoán sơ bộ (ICD)</label>' + renderIcdInput('cotsong_cls_khac_sobo', fieldValue({ code: 'cotsong_cls_khac_sobo' }, data)) + '</div>';
+  html += '<div class="field"><label>Chẩn đoán xác định (ICD)</label>' + renderIcdInput('cotsong_cls_khac_xacdinh', fieldValue({ code: 'cotsong_cls_khac_xacdinh' }, data)) + '</div>';
+  html += '</div>';
+  return html;
+}
+
 // Khối tiền sử gia đình tim mạch/chuyển hóa — CHỈ dùng cho M4. tsb_giadinh là cổng Có/Không
 // AI đọc trực tiếp từ phiếu (không tự suy ra từ 7 mục con), giống hệt cách "Chưa phát hiện
 // bất thường" độc lập với chẩn đoán chi tiết ở phần khám lâm sàng.
@@ -1635,7 +1871,7 @@ function renderClinicalTable(data, warnSet, formType) {
   // thống import báo "Dữ liệu không hợp lệ" dù ô hiển thị NHÌN như có giá trị (đã xác nhận qua
   // mở trực tiếp file .xlsx xuất ra kiểm tra công thức). Mẫu 03 vẫn giữ nguyên số 1-5 như cũ,
   // không đổi.
-  var phanloaiOptions = formType === 'M4' ? ['Loại I', 'Loại II', 'Loại III', 'Loại IV', 'Loại V'] : [1, 2, 3, 4, 5];
+  var phanloaiOptions = (formType === 'M4' || formType === 'M2') ? ['Loại I', 'Loại II', 'Loại III', 'Loại IV', 'Loại V'] : [1, 2, 3, 4, 5];
   var html = '<table class="clinical-table"><thead><tr><th>Chuyên khoa</th><th>Bình thường?</th><th>Chẩn đoán sơ bộ (ICD)</th><th>Chẩn đoán xác định (ICD)</th><th>Phân loại</th></tr></thead><tbody>';
   specialties.forEach(function (sp) {
     var ck = fieldValue({ code: sp.ck }, data);
@@ -1902,18 +2138,74 @@ function openDetail(id) {
   getHanhChinhFields(formType).forEach(function (f) { html += renderSimpleField(f, p.data, warnSet, formType); });
   html += '</div>';
 
-  // Mẫu 02 (học sinh) CHỈ có phần hành chính — hệ thống import chưa hỗ trợ cận lâm sàng cho
-  // mẫu này (anh Hưng xác nhận), nên bỏ qua toàn bộ các khối tiền sử/thể lực/khám lâm sàng/kết
-  // luận bên dưới, vốn chỉ áp dụng cho Mẫu 03/Mẫu 04.
-  if (formType !== 'M2') {
-    html += '<div class="section-title">Tiền sử gia đình (ông/bà/bố/mẹ/anh chị em ruột)</div>';
-    html += renderGiaDinhCheckboxes(p.data);
+  html += '<div class="section-title">Tiền sử gia đình (ông/bà/bố/mẹ/anh chị em ruột)</div>';
+  html += renderGiaDinhCheckboxes(p.data);
 
-    if (formType === 'M4') {
-      html += '<div class="section-title">Tiền sử bệnh tim mạch/chuyển hóa của gia đình</div>';
-      html += renderGiaDinhTimMachCheckboxes(p.data, warnSet);
-    }
+  if (formType === 'M4') {
+    html += '<div class="section-title">Tiền sử bệnh tim mạch/chuyển hóa của gia đình</div>';
+    html += renderGiaDinhTimMachCheckboxes(p.data, warnSet);
+  }
 
+  if (formType === 'M2') {
+    // Mẫu 02 (học sinh) — file ĐÚNG (đã thay thế hoàn toàn bản trước chỉ có hành chính): đủ
+    // sản khoa/tiêm chủng/tiền sử bệnh cá nhân/thể lực/sàng lọc ADHD-ASD/khám lâm sàng 9 chuyên
+    // khoa/cột sống/mắt/thính lực/xét nghiệm/kết luận — quy mô ngang hoặc hơn M4 (B1+B2 gộp lại).
+    html += '<div class="section-title">Sản khoa / Tiền sử sinh</div><div class="grid2">';
+    html += renderBool01Field({ code: 'sankhoa_chuaphathienbatthuong', label: 'Sản khoa bình thường' }, p.data, warnSet);
+    html += '<div class="field"><label>Ghi chú bất thường</label><input type="text" data-code="sankhoa_ghichu" value="' + escapeHtml(fieldValue({ code: 'sankhoa_ghichu' }, p.data)) + '"></div>';
+    html += '<div class="field"><label>Mẹ bị bệnh trong thai kỳ (nếu có)</label><input type="text" data-code="mebibenh" value="' + escapeHtml(fieldValue({ code: 'mebibenh' }, p.data)) + '"></div>';
+    html += '</div>';
+
+    html += '<div class="section-title">Tiêm chủng</div>';
+    html += renderTiemChungFields(p.data, warnSet, formType);
+
+    html += '<div class="section-title">Tiền sử bệnh của trẻ</div>';
+    html += renderTienSuBenhCaNhanCheckboxes(p.data);
+    html += '<div class="grid2">';
+    html += '<div class="field"><label>Bệnh khác (nếu có, kèm mã ICD)</label><input type="text" data-code="benh_khac" value="' + escapeHtml(fieldValue({ code: 'benh_khac' }, p.data)) + '"></div>';
+    html += '<div class="field"><label>Hiện đang điều trị bệnh gì không</label><input type="text" data-code="benh_dangdieutri" value="' + escapeHtml(fieldValue({ code: 'benh_dangdieutri' }, p.data)) + '"></div>';
+    html += '</div>';
+
+    html += '<div class="section-title">Khám thể lực</div><div class="grid3">';
+    getTheLucFields(formType).forEach(function (f) { html += renderSimpleField(f, p.data, warnSet, formType); });
+    html += '</div>';
+
+    html += '<div class="section-title">Sàng lọc Tăng động giảm chú ý (ADHD)</div>';
+    html += renderAdhdFields(p.data, warnSet, formType);
+
+    html += '<div class="section-title">Sàng lọc Tự kỷ (ASD)</div>';
+    html += renderAsdFields(p.data, warnSet, formType);
+
+    html += '<div class="section-title">Khám lâm sàng</div>';
+    html += renderClinicalTable(p.data, warnSet, formType);
+
+    html += '<div class="section-title">Khám cột sống</div>';
+    html += renderCotSongFields(p.data, warnSet, formType);
+    html += '<div class="field" style="max-width:400px;"><label>Khám cận lâm sàng khác</label><input type="text" data-code="khamcanlamsang_khac" value="' + escapeHtml(fieldValue({ code: 'khamcanlamsang_khac' }, p.data)) + '"></div>';
+
+    html += '<div class="section-title">Khám thị lực</div><div class="grid2">';
+    [['mat_khongkinh_mp', 'Không kính (MP)'], ['mat_khongkinh_mt', 'Không kính (MT)'], ['mat_cokinh_mp', 'Có kính (MP)'], ['mat_cokinh_mt', 'Có kính (MT)']].forEach(function (r) {
+      html += renderSimpleField({ code: r[0], label: r[1], type: 'number', optional: true }, p.data, warnSet, formType);
+    });
+    html += '</div>';
+
+    html += '<div class="section-title">Khám thính lực</div><div class="grid2">';
+    [['tai_noithuong_tt', 'Tai trái (nói thường, m)'], ['tai_noithuong_tp', 'Tai phải (nói thường, m)'], ['tai_noitham_tt', 'Tai trái (nói thầm, m)'], ['tai_noitham_tp', 'Tai phải (nói thầm, m)']].forEach(function (r) {
+      html += renderSimpleField({ code: r[0], label: r[1], type: 'number', optional: true }, p.data, warnSet, formType);
+    });
+    html += '</div>';
+
+    html += '<div class="section-title">Xét nghiệm / Chẩn đoán hình ảnh</div><div class="grid2">';
+    html += renderSimpleField({ code: 'ngay_xetnghiem', label: 'Ngày xét nghiệm', type: 'text', optional: true, hint: 'dd/MM/yyyy' }, p.data, warnSet, formType);
+    html += renderSimpleField({ code: 'donvi_xetnghiem', label: 'Đơn vị xét nghiệm', type: 'text', optional: true }, p.data, warnSet, formType);
+    html += renderSimpleField({ code: 'kq_xetnghiem', label: 'Kết quả xét nghiệm', type: 'text', optional: true }, p.data, warnSet, formType);
+    html += renderSimpleField({ code: 'kq_cdha', label: 'Kết quả chẩn đoán hình ảnh', type: 'text', optional: true }, p.data, warnSet, formType);
+    html += '</div>';
+
+    html += '<div class="section-title">Kết luận</div><div class="grid2">';
+    getKetLuanFields(formType).forEach(function (f) { html += renderSimpleField(f, p.data, warnSet, formType); });
+    html += '</div>';
+  } else {
     html += '<div class="section-title">Tiền sử bản thân <button class="btn btn-sm btn-secondary" id="btnAllKhong" type="button">Đặt tất cả = Không</button></div><div class="grid3">';
     TIEN_SU_BAN_THAN_FIELDS.forEach(function (f) { html += renderBool01Field(f, p.data, warnSet); });
     html += '</div>';
@@ -1979,6 +2271,15 @@ function bindModalEvents(p) {
       if (!el.checked && idx !== -1) p.data.giadinh_benh_ids.splice(idx, 1);
     });
   });
+  container.querySelectorAll('[data-tiensubenh-id]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      var id = Number(el.dataset.tiensubenhId);
+      if (!Array.isArray(p.data.tien_su_benh_ids)) p.data.tien_su_benh_ids = [];
+      var idx = p.data.tien_su_benh_ids.indexOf(id);
+      if (el.checked && idx === -1) p.data.tien_su_benh_ids.push(id);
+      if (!el.checked && idx !== -1) p.data.tien_su_benh_ids.splice(idx, 1);
+    });
+  });
   var btnAllKhong = document.getElementById('btnAllKhong');
   if (btnAllKhong) btnAllKhong.addEventListener('click', function () {
     setAllTienSuKhong(p.data);
@@ -2027,7 +2328,12 @@ function getRequiredFieldSections(formType) {
     var phanloaiFields = SPECIALTIES_M4.map(function (sp) { return { code: sp.phanloai, label: sp.label + ' - Phân loại' }; });
     return [HANH_CHINH_FIELDS_M4, THE_LUC_FIELDS_M4, KET_LUAN_FIELDS_M4, TIEN_SU_BAN_THAN_FIELDS, phanloaiFields];
   }
-  if (formType === 'M2') return [HANH_CHINH_FIELDS_M2];
+  if (formType === 'M2') {
+    // Tương tự M4: Phân loại (I-V) của từng chuyên khoa là nhận định lâm sàng, không tự đoán
+    // được — bắt buộc xác nhận tay trước khi duyệt.
+    var phanloaiFieldsM2 = SPECIALTIES_M2.map(function (sp) { return { code: sp.phanloai, label: sp.label + ' - Phân loại' }; });
+    return [HANH_CHINH_FIELDS_M2, THE_LUC_FIELDS_M2, KET_LUAN_FIELDS_M2, phanloaiFieldsM2];
+  }
   return [HANH_CHINH_FIELDS, THE_LUC_FIELDS, KET_LUAN_FIELDS];
 }
 
@@ -2036,6 +2342,10 @@ function validateRequiredFields(data, formType) {
   getRequiredFieldSections(formType).forEach(function (fields) {
     fields.forEach(function (f) {
       if (f.optional) return;
+      // Mẫu 02: nếu trẻ KHÔNG đi học (tre_co_di_hoc = 0), 3 trường về trường học không áp dụng
+      // — bỏ qua yêu cầu bắt buộc cho riêng 3 trường này (khác các trường bắt buộc còn lại).
+      if (formType === 'M2' && String(data.tre_co_di_hoc) === '0' &&
+        (f.code === 'truong_phuong_xa' || f.code === 'truong_ten_truong' || f.code === 'truong_lop')) return;
       var v = data[f.code];
       if (v === undefined || v === null || v === '') missing.push({ code: f.code, label: f.label });
     });
@@ -2211,12 +2521,20 @@ function buildExportRecord(p) {
   var rec = {};
   Object.keys(p.data).forEach(function (k) {
     if (k.indexOf('__') === 0) return; // bỏ field nội bộ (__icdAi)
-    if (k === 'giadinh_benh_ids') return; // quy đổi riêng bên dưới, không gửi mảng thô
+    if (k === 'giadinh_benh_ids' || k === 'tien_su_benh_ids') return; // quy đổi riêng bên dưới, không gửi mảng thô
     rec[k] = p.data[k];
   });
   var ids = p.data.giadinh_benh_ids || [];
   rec.giadinh_macbenh = ids.length ? 1 : 0;
   rec.giadinh_danhsachbenh_icd = ids.join(',');
+  // Mẫu 02 — tien_su_benh (BE): chưa test qua import file thật xem cột này nhận đúng danh sách
+  // mã ID (giống giadinh_macbenh) hay cần đổi thành mã ICD-10 tương ứng (dòng hint gốc trong
+  // file mẫu ghi "Nhập Mã ICD", hơi khác kiểu của giadinh_macbenh) — tạm ghi danh sách ID cách
+  // nhau bởi dấu phẩy cho nhất quán với giadinh, báo lại nếu import thật từ chối để đổi cách ghi.
+  if (p.formType === 'M2') {
+    var tsbIds = p.data.tien_su_benh_ids || [];
+    rec.tien_su_benh = tsbIds.join(',');
+  }
   rec.formType = p.formType || 'M3'; // để Code.gs biết ghi vào đúng sheet mẫu + đúng cột
   return rec;
 }
