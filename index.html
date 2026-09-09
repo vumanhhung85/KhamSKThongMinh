@@ -1031,6 +1031,9 @@ function applyBusinessRules(data, formType) {
     // Tiêm chủng: nếu Gemini vẫn để trống 1 vài mũi dù đã dặn ở prompt, mặc định "Không nhớ rõ"
     // (an toàn hơn "Chưa tiêm" — không khẳng định điều chưa chắc chắn).
     TIEM_CHUNG_FIELDS_M2.forEach(function (f) { if (!data[f.code]) data[f.code] = 'Không nhớ rõ'; });
+    // Sàng lọc ADHD: hệ thống thật mặc định sẵn "Không có" cho mọi câu (radio đã tick sẵn khi
+    // chưa đụng vào) — anh Hưng xác nhận nên khớp đúng mặc định đó, không để trống.
+    ADHD_FIELDS_M2.forEach(function (f) { if (!data[f.code]) data[f.code] = 'Không có'; });
   } else {
     if (!data.hinh_thuc_chi_tra_khamsk) data.hinh_thuc_chi_tra_khamsk = 'Nguồn khác';
     if (!data.hinh_thuc_chi_tra_khamsk_chi_tiet) data.hinh_thuc_chi_tra_khamsk_chi_tiet = 'Khám Theo Hợp Đồng';
@@ -1099,7 +1102,7 @@ function buildFieldListText(formType) {
     addSection('Khám thể lực', getTheLucFields(formType));
     lines.push('### Sàng lọc Tăng động giảm chú ý - ADHD (chỉ điền nếu phiếu CÓ làm phần đánh giá này, để trống toàn bộ nếu phiếu không có phần này)');
     lines.push('- adhd_ngay_danh_gia: ngày đánh giá (dd/MM/yyyy), để trống nếu không có.');
-    lines.push('- Mỗi câu dưới đây CHỈ 1 trong 3 giá trị: "Không có", "Thỉnh thoảng", "Thường xuyên":');
+    lines.push('- Mỗi câu dưới đây CHỈ 1 trong 3 giá trị: "Không có", "Thỉnh thoảng", "Thường xuyên" — hệ thống mặc định sẵn "Không có" cho mọi câu, nên nếu phiếu không đánh dấu gì khác ở 1 câu cụ thể, điền "Không có" cho câu đó (không để trống):');
     ADHD_FIELDS_M2.forEach(function (f) { lines.push('  - ' + f.code + ': ' + f.label); });
     lines.push('- adhd_ket_qua: kết quả đánh giá (ghi rõ theo phiếu, VD "Có nguy cơ"/"Không có nguy cơ"), để trống nếu không có.');
     lines.push('- adhd_ghi_chu: ghi chú thêm (nếu có).');
