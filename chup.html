@@ -65,7 +65,7 @@
   .modal-bottom .btn{flex:1;}
   #editHint{color:var(--muted);font-size:12px;text-align:center;padding:0 16px 6px;}
 
-  .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:8px;font-size:13px;z-index:80;box-shadow:0 4px 14px rgba(0,0,0,.4);}
+  .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:8px;font-size:13px;z-index:80;box-shadow:0 4px 14px rgba(0,0,0,.4);max-width:88vw;text-align:center;}
 </style>
 </head>
 <body>
@@ -129,8 +129,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 // OpenCV.js dùng để tự dò 4 góc tờ phiếu ngay trên khung camera (giống viền xanh của CamScanner).
-// File khá nặng (~10MB) nên tải async — trong lúc chưa tải xong, app vẫn dùng bình thường, chỉ
-// là chưa có viền xanh + chưa tự cắt lúc chụp (vẫn chụp được, vẫn cắt tay bằng nút ✎ như cũ).
+// File khá nặng (~10MB) nên tải async — trong lúc chưa tải xong (hoặc nếu tải lỗi hẳn), app vẫn
+// dùng bình thường, chỉ là chưa có viền xanh + chưa tự cắt lúc chụp (vẫn chụp được, vẫn cắt tay
+// bằng nút ✎ như cũ).
+//
+// LƯU Ý: bản chính thức tại docs.opencv.org/4.x/opencv.js bị thiếu 1 header kỹ thuật (CORP —
+// Cross-Origin-Resource-Policy), khiến một số trình duyệt/điện thoại CHẶN không cho tải (lỗi đã
+// được báo công khai trên GitHub của OpenCV, không phải do mạng). Dùng bản mirror qua jsDelivr
+// (CDN chuẩn, có đủ header) làm nguồn chính, nếu lỗi thì tự thử lại nguồn gốc làm dự phòng.
 var CV_READY = false;
 var Module = {
   onRuntimeInitialized: function () {
@@ -139,8 +145,28 @@ var Module = {
     document.getElementById('autoToggleLabel').textContent = 'Tự động cắt';
   }
 };
+var OPENCV_SOURCES = [
+  'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js',
+  'https://docs.opencv.org/4.x/opencv.js'
+];
+function loadOpenCv(sourceIdx) {
+  if (sourceIdx >= OPENCV_SOURCES.length) {
+    document.getElementById('autoToggleLabel').textContent = 'Tự động cắt (lỗi tải cả 2 nguồn, dùng cắt tay)';
+    var toggle = document.getElementById('autoDetectToggle');
+    toggle.checked = false; toggle.disabled = true;
+    return;
+  }
+  var s = document.createElement('script');
+  s.async = true;
+  s.src = OPENCV_SOURCES[sourceIdx];
+  s.onerror = function () {
+    console.warn('Không tải được OpenCV.js từ', OPENCV_SOURCES[sourceIdx], '— thử nguồn tiếp theo.');
+    loadOpenCv(sourceIdx + 1);
+  };
+  document.head.appendChild(s);
+}
+loadOpenCv(0);
 </script>
-<script async src="https://docs.opencv.org/4.x/opencv.js" onerror="document.getElementById('autoToggleLabel').textContent='Tự động cắt (lỗi tải, dùng cắt tay)';document.getElementById('autoDetectToggle').checked=false;document.getElementById('autoDetectToggle').disabled=true;"></script>
 <script>
 // ============================================================
 // TRẠNG THÁI CHÍNH — mỗi ca là 1 mảng ảnh (dataURL JPEG), giữ trong bộ nhớ, KHÔNG gửi lên đâu cả
@@ -158,12 +184,13 @@ var thumbGrid = document.getElementById('thumbGrid');
 var emptyHint = document.getElementById('emptyHint');
 var btnExportCase = document.getElementById('btnExportCase');
 
-function showToast(msg) {
+function showToast(msg, durationMs) {
   var t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
+  t.addEventListener('click', function () { t.remove(); });
   document.body.appendChild(t);
-  setTimeout(function () { t.remove(); }, 2200);
+  setTimeout(function () { t.remove(); }, durationMs || 2200);
 }
 
 // ------------------------------------------------------------
@@ -761,12 +788,17 @@ function openSaveModal(pdfBlob, fileName) {
   } catch (e) { canShareFile = false; }
   btnShare.style.display = canShareFile ? 'block' : 'none';
   btnShare.onclick = function () {
-    var file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-    navigator.share({ files: [file], title: fileName }).then(function () {
-      saveModal.classList.remove('show');
-    }).catch(function (err) {
-      if (err && err.name !== 'AbortError') showToast('Chia sẻ thất bại, thử "Tải về máy" thay thế.');
-    });
+    try {
+      var file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+      navigator.share({ files: [file], title: fileName }).then(function () {
+        saveModal.classList.remove('show');
+      }).catch(function (err) {
+        if (err && err.name === 'AbortError') return; // anh tự bấm huỷ trên bảng chia sẻ, không phải lỗi
+        showToast('Chia sẻ lỗi: ' + (err && err.name ? err.name + ' - ' : '') + (err && err.message ? err.message : err) + '. Thử "Tải về máy" thay thế.', 6000);
+      });
+    } catch (e) {
+      showToast('Chia sẻ lỗi ngay khi bấm: ' + (e && e.message ? e.message : e) + '. Thử "Tải về máy" thay thế.', 6000);
+    }
   };
 
   document.getElementById('btnSaveDownload').onclick = function () {
