@@ -133,18 +133,29 @@
 // dùng bình thường, chỉ là chưa có viền xanh + chưa tự cắt lúc chụp (vẫn chụp được, vẫn cắt tay
 // bằng nút ✎ như cũ).
 //
-// LƯU Ý: bản chính thức tại docs.opencv.org/4.x/opencv.js bị thiếu 1 header kỹ thuật (CORP —
-// Cross-Origin-Resource-Policy), khiến một số trình duyệt/điện thoại CHẶN không cho tải (lỗi đã
-// được báo công khai trên GitHub của OpenCV, không phải do mạng). Dùng bản mirror qua jsDelivr
-// (CDN chuẩn, có đủ header) làm nguồn chính, nếu lỗi thì tự thử lại nguồn gốc làm dự phòng.
+// LƯU Ý QUAN TRỌNG đã rút kinh nghiệm: các bản OpenCV.js đóng gói lại (mirror qua npm/jsDelivr)
+// có thể KHÔNG dùng đúng kiểu báo hiệu "đã sẵn sàng" `Module.onRuntimeInitialized` như bản chính
+// thức (VD @techstark/opencv-js đời mới dùng kiểu module ES khác hẳn) — nếu chỉ dựa vào đúng 1
+// kiểu tín hiệu đó, có bản tải xong hẳn hoi mà app vẫn tưởng chưa xong (đã gặp thật). Nên ở đây
+// dùng CẢ 2 CÁCH cùng lúc: (1) tín hiệu Module.onRuntimeInitialized kiểu cũ NẾU bản đang tải hỗ
+// trợ, VÀ (2) tự kiểm tra trực tiếp mỗi 200ms xem `cv.Mat` đã dùng được chưa (không phụ thuộc
+// bản nào báo hiệu kiểu gì) — cách nào báo trước thì tính là xong trước.
 var CV_READY = false;
+function markCvReady(label) {
+  if (CV_READY) return;
+  CV_READY = true;
+  console.log('OpenCV.js đã sẵn sàng (' + label + ') — bật tự động dò góc phiếu.');
+  document.getElementById('autoToggleLabel').textContent = 'Tự động cắt';
+}
 var Module = {
-  onRuntimeInitialized: function () {
-    CV_READY = true;
-    console.log('OpenCV.js đã sẵn sàng — bật tự động dò góc phiếu.');
-    document.getElementById('autoToggleLabel').textContent = 'Tự động cắt';
-  }
+  onRuntimeInitialized: function () { markCvReady('Module.onRuntimeInitialized'); }
 };
+function pollCvReady(triesLeft) {
+  if (CV_READY) return;
+  if (typeof cv !== 'undefined' && cv && typeof cv.Mat === 'function') { markCvReady('tự kiểm tra trực tiếp'); return; }
+  if (triesLeft <= 0) return; // hết giờ chờ — coi như tải lỗi/không hỗ trợ, giữ nguyên chế độ cắt tay
+  setTimeout(function () { pollCvReady(triesLeft - 1); }, 200);
+}
 var OPENCV_SOURCES = [
   'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js',
   'https://docs.opencv.org/4.x/opencv.js'
@@ -156,9 +167,11 @@ function loadOpenCv(sourceIdx) {
     toggle.checked = false; toggle.disabled = true;
     return;
   }
+  document.getElementById('autoToggleLabel').textContent = 'Tự động cắt (đang tải công cụ...)';
   var s = document.createElement('script');
   s.async = true;
   s.src = OPENCV_SOURCES[sourceIdx];
+  s.onload = function () { pollCvReady(75); }; // chờ tối đa ~15s (75 x 200ms) cho WASM khởi động xong sau khi tải file về
   s.onerror = function () {
     console.warn('Không tải được OpenCV.js từ', OPENCV_SOURCES[sourceIdx], '— thử nguồn tiếp theo.');
     loadOpenCv(sourceIdx + 1);
