@@ -83,6 +83,7 @@
   <label class="count-badge" id="autoToggleWrap" style="left:12px;right:auto;display:flex;align-items:center;gap:6px;cursor:pointer;">
     <input type="checkbox" id="autoDetectToggle" checked style="margin:0;"> <span id="autoToggleLabel">Tự động cắt</span>
   </label>
+  <button class="count-badge" id="btnDebugInfo" style="left:12px;right:auto;top:44px;font-size:11px;padding:3px 8px;">ℹ️ Xem trạng thái</button>
   <div id="shutterRow">
     <button id="btnSwitchCam" title="Đổi camera">⟲</button>
     <button id="btnShutter" title="Chụp"></button>
@@ -141,9 +142,11 @@
 // trợ, VÀ (2) tự kiểm tra trực tiếp mỗi 200ms xem `cv.Mat` đã dùng được chưa (không phụ thuộc
 // bản nào báo hiệu kiểu gì) — cách nào báo trước thì tính là xong trước.
 var CV_READY = false;
+var CV_DEBUG = { source: null, readyVia: null, loadErrors: [], lastDetectAt: null, lastDetectFound: null, lastDetectError: null, pollTimedOut: false };
 function markCvReady(label) {
   if (CV_READY) return;
   CV_READY = true;
+  CV_DEBUG.readyVia = label;
   console.log('OpenCV.js đã sẵn sàng (' + label + ') — bật tự động dò góc phiếu.');
   document.getElementById('autoToggleLabel').textContent = 'Tự động cắt';
 }
@@ -153,12 +156,12 @@ var Module = {
 function pollCvReady(triesLeft) {
   if (CV_READY) return;
   if (typeof cv !== 'undefined' && cv && typeof cv.Mat === 'function') { markCvReady('tự kiểm tra trực tiếp'); return; }
-  if (triesLeft <= 0) return; // hết giờ chờ — coi như tải lỗi/không hỗ trợ, giữ nguyên chế độ cắt tay
+  if (triesLeft <= 0) { CV_DEBUG.pollTimedOut = true; return; } // hết giờ chờ — coi như tải lỗi/không hỗ trợ, giữ nguyên chế độ cắt tay
   setTimeout(function () { pollCvReady(triesLeft - 1); }, 200);
 }
 var OPENCV_SOURCES = [
-  'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js',
-  'https://docs.opencv.org/4.x/opencv.js'
+  'https://docs.opencv.org/4.x/opencv.js',
+  'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js'
 ];
 function loadOpenCv(sourceIdx) {
   if (sourceIdx >= OPENCV_SOURCES.length) {
@@ -168,12 +171,14 @@ function loadOpenCv(sourceIdx) {
     return;
   }
   document.getElementById('autoToggleLabel').textContent = 'Tự động cắt (đang tải công cụ...)';
+  CV_DEBUG.source = OPENCV_SOURCES[sourceIdx];
   var s = document.createElement('script');
   s.async = true;
   s.src = OPENCV_SOURCES[sourceIdx];
   s.onload = function () { pollCvReady(75); }; // chờ tối đa ~15s (75 x 200ms) cho WASM khởi động xong sau khi tải file về
   s.onerror = function () {
     console.warn('Không tải được OpenCV.js từ', OPENCV_SOURCES[sourceIdx], '— thử nguồn tiếp theo.');
+    CV_DEBUG.loadErrors.push(OPENCV_SOURCES[sourceIdx]);
     loadOpenCv(sourceIdx + 1);
   };
   document.head.appendChild(s);
@@ -278,7 +283,27 @@ document.getElementById('autoDetectToggle').addEventListener('change', function 
   if (!this.checked) { lastDetectedQuad = null; detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height); }
 });
 
+// Bấm để tự xem tình trạng OpenCV.js thật đang thế nào — không cần mở console lập trình viên,
+// gửi luôn cho anh Hưng đọc là hiểu ngay chỗ nào đang kẹt.
+document.getElementById('btnDebugInfo').addEventListener('click', function () {
+  var lines = [
+    'Nguồn đang dùng: ' + (CV_DEBUG.source || '(chưa bắt đầu tải)'),
+    'CV_READY: ' + CV_READY,
+    'Cách xác nhận sẵn sàng: ' + (CV_DEBUG.readyVia || '(chưa có)'),
+    'typeof cv: ' + (typeof cv),
+    'cv.Mat có tồn tại: ' + (typeof cv !== 'undefined' && cv ? typeof cv.Mat : '(cv chưa có)'),
+    'Đã hết giờ chờ (15s) mà chưa thấy sẵn sàng: ' + CV_DEBUG.pollTimedOut,
+    'Nguồn bị lỗi tải: ' + (CV_DEBUG.loadErrors.length ? CV_DEBUG.loadErrors.join(', ') : '(không có)'),
+    'Camera đang chạy: ' + (!!currentStream),
+    'Lần dò cạnh gần nhất: ' + (CV_DEBUG.lastDetectAt || '(chưa chạy lần nào)'),
+    'Lần đó có tìm thấy khung giấy không: ' + CV_DEBUG.lastDetectFound,
+    'Lỗi lần dò gần nhất (nếu có): ' + (CV_DEBUG.lastDetectError || '(không có)')
+  ];
+  alert(lines.join('\n'));
+});
+
 function runDetectOnce() {
+  CV_DEBUG.lastDetectAt = new Date().toLocaleTimeString('vi-VN');
   var vw = video.videoWidth, vh = video.videoHeight;
   var scale = DETECT_WORK_WIDTH / vw;
   var dw = DETECT_WORK_WIDTH, dh = Math.round(vh * scale);
@@ -327,8 +352,11 @@ function runDetectOnce() {
     } else {
       lastDetectedQuad = null;
     }
+    CV_DEBUG.lastDetectFound = !!bestPts;
+    CV_DEBUG.lastDetectError = null;
   } catch (e) {
     console.warn('Lỗi dò cạnh (bỏ qua lần này):', e);
+    CV_DEBUG.lastDetectError = (e && e.message) ? e.message : String(e);
     lastDetectedQuad = null;
   } finally {
     if (src) src.delete();
@@ -667,23 +695,33 @@ document.getElementById('btnEditDone').addEventListener('click', function () {
   // Cắt bằng phối cảnh đơn giản: dùng khung tứ giác 4 góc đã kéo, "duỗi thẳng" về hình chữ nhật
   // bằng phép biến đổi affine ghép từ 2 tam giác (đủ tốt cho ảnh chụp phiếu giấy, không cần thư
   // viện ngoài).
+  //
+  // QUAN TRỌNG: cropPts đang tính theo toạ độ của editCanvas — vốn đã bị THU NHỎ để vừa màn hình
+  // lúc sửa (xem layoutEditCanvas()), KHÔNG phải kích thước ảnh gốc. Nếu cắt thẳng trên đó thì
+  // ảnh ra bị vỡ hạt (đã gặp thật). Phải quy đổi cropPts NGƯỢC LẠI về đúng độ phân giải ảnh gốc
+  // trước khi cắt, để ảnh ra vẫn nét như ảnh chụp ban đầu.
+  var editScale = parseFloat(editCanvas.dataset.scale) || 1;
+  var rotSz = rotatedSize(); // kích thước ảnh gốc SAU khi xoay (đổi chiều rộng/cao nếu xoay 90/270), CHƯA thu nhỏ
+
   var srcCanvas = document.createElement('canvas');
-  srcCanvas.width = editCanvas.width; srcCanvas.height = editCanvas.height;
+  srcCanvas.width = rotSz.w; srcCanvas.height = rotSz.h;
   var sctx = srcCanvas.getContext('2d');
   sctx.save();
   sctx.translate(srcCanvas.width / 2, srcCanvas.height / 2);
   sctx.rotate(editRotation * Math.PI / 180);
-  if (editRotation % 180 === 0) sctx.drawImage(editImg, -srcCanvas.width / 2, -srcCanvas.height / 2, srcCanvas.width, srcCanvas.height);
-  else sctx.drawImage(editImg, -srcCanvas.height / 2, -srcCanvas.width / 2, srcCanvas.height, srcCanvas.width);
+  if (editRotation % 180 === 0) sctx.drawImage(editImg, -editImg.width / 2, -editImg.height / 2);
+  else sctx.drawImage(editImg, -editImg.width / 2, -editImg.height / 2);
   sctx.restore();
 
-  var outW = Math.round(Math.hypot(cropPts[1].x - cropPts[0].x, cropPts[1].y - cropPts[0].y));
-  var outH = Math.round(Math.hypot(cropPts[3].x - cropPts[0].x, cropPts[3].y - cropPts[0].y));
+  var cropPtsFullRes = cropPts.map(function (p) { return { x: p.x / editScale, y: p.y / editScale }; });
+
+  var outW = Math.round(Math.hypot(cropPtsFullRes[1].x - cropPtsFullRes[0].x, cropPtsFullRes[1].y - cropPtsFullRes[0].y));
+  var outH = Math.round(Math.hypot(cropPtsFullRes[3].x - cropPtsFullRes[0].x, cropPtsFullRes[3].y - cropPtsFullRes[0].y));
   outW = Math.max(outW, 40); outH = Math.max(outH, 40);
   var outCanvas = document.createElement('canvas');
   outCanvas.width = outW; outCanvas.height = outH;
   var octx = outCanvas.getContext('2d');
-  drawPerspectiveQuad(octx, srcCanvas, cropPts, outW, outH);
+  drawPerspectiveQuad(octx, srcCanvas, cropPtsFullRes, outW, outH);
 
   CASE_PHOTOS[editIndex].dataUrl = outCanvas.toDataURL('image/jpeg', 0.92);
   editModal.classList.remove('show');
