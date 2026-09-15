@@ -22,11 +22,17 @@
   #shutterRow{position:absolute;bottom:16px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:28px;}
   #btnShutter{width:72px;height:72px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.35);cursor:pointer;}
   #btnShutter:active{background:#ddd;}
+  #btnShutter:disabled{background:#9aa3b2;border-color:rgba(255,255,255,.2);cursor:wait;}
   #btnSwitchCam{width:44px;height:44px;border-radius:50%;background:rgba(20,22,28,.55);color:#fff;border:1px solid rgba(255,255,255,.3);font-size:18px;cursor:pointer;}
   .count-badge{position:absolute;top:12px;right:12px;background:rgba(20,22,28,.7);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:13px;padding:4px 10px;border-radius:20px;}
   #detectOverlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
-  #autoToggleWrap{font-size:12px;user-select:none;}
-  #autoToggleWrap input{accent-color:var(--blue);width:14px;height:14px;}
+  #autoToggleWrap,#hiresToggleWrap{font-size:12px;user-select:none;}
+  #autoToggleWrap input,#hiresToggleWrap input{accent-color:var(--blue);width:14px;height:14px;}
+  /* Dòng trạng thái tấm vừa chụp: độ phân giải thật + có tự cắt được không. Nhìn dòng này là biết
+     ngay ảnh có đủ nét không, khỏi phải xuất PDF ra mới phát hiện. */
+  #capStatus{position:absolute;left:12px;right:12px;bottom:100px;font-size:11px;color:#dfe5ee;background:rgba(20,22,28,.68);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:5px 9px;line-height:1.45;display:none;}
+  #capStatus b{color:#fff;font-weight:600;}
+  #capStatus .bad{color:#ffcf8a;}
 
   #fallbackRow{padding:10px 16px;border-bottom:1px solid var(--line);}
   #fallbackRow label{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:8px 12px;border-radius:8px;cursor:pointer;}
@@ -41,6 +47,7 @@
   .thumb{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--panel2);}
   .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
   .thumb .idx{position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;}
+  .thumb .px{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);color:#cfe3ff;font-size:9px;padding:1px 5px;border-radius:10px;}
   .thumb .actions{position:absolute;bottom:0;left:0;right:0;display:flex;background:rgba(0,0,0,.55);}
   .thumb .actions button{flex:1;background:none;border:none;color:#fff;font-size:14px;padding:6px 0;cursor:pointer;border-right:1px solid rgba(255,255,255,.15);}
   .thumb .actions button:last-child{border-right:none;}
@@ -83,7 +90,11 @@
   <label class="count-badge" id="autoToggleWrap" style="left:12px;right:auto;display:flex;align-items:center;gap:6px;cursor:pointer;">
     <input type="checkbox" id="autoDetectToggle" checked style="margin:0;"> <span id="autoToggleLabel">Tự động cắt</span>
   </label>
-  <button class="count-badge" id="btnDebugInfo" style="left:12px;right:auto;top:44px;font-size:11px;padding:3px 8px;">ℹ️ Xem trạng thái</button>
+  <label class="count-badge" id="hiresToggleWrap" style="left:12px;right:auto;top:44px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+    <input type="checkbox" id="hiresToggle" checked style="margin:0;"> <span id="hiresToggleLabel">Chụp nét cao</span>
+  </label>
+  <button class="count-badge" id="btnDebugInfo" style="left:12px;right:auto;top:76px;font-size:11px;padding:3px 8px;">ℹ️ Xem trạng thái</button>
+  <div id="capStatus"></div>
   <div id="shutterRow">
     <button id="btnSwitchCam" title="Đổi camera">⟲</button>
     <button id="btnShutter" title="Chụp"></button>
@@ -129,7 +140,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
-// OpenCV.js dùng để tự dò 4 góc tờ phiếu ngay trên khung camera (giống viền xanh của CamScanner).
+// OpenCV.js dùng để tự dò 4 góc tờ phiếu (giống viền xanh của CamScanner).
 // File khá nặng (~10MB) nên tải async — trong lúc chưa tải xong (hoặc nếu tải lỗi hẳn), app vẫn
 // dùng bình thường, chỉ là chưa có viền xanh + chưa tự cắt lúc chụp (vẫn chụp được, vẫn cắt tay
 // bằng nút ✎ như cũ).
@@ -142,7 +153,11 @@
 // trợ, VÀ (2) tự kiểm tra trực tiếp mỗi 200ms xem `cv.Mat` đã dùng được chưa (không phụ thuộc
 // bản nào báo hiệu kiểu gì) — cách nào báo trước thì tính là xong trước.
 var CV_READY = false;
-var CV_DEBUG = { source: null, readyVia: null, loadErrors: [], lastDetectAt: null, lastDetectFound: null, lastDetectError: null, pollTimedOut: false };
+var CV_DEBUG = {
+  source: null, readyVia: null, loadErrors: [], pollTimedOut: false,
+  lastDetectAt: null, lastDetectFound: null, lastDetectError: null,
+  detectTicks: 0, loopRestarts: 0, camRestarts: 0
+};
 function markCvReady(label) {
   if (CV_READY) return;
   CV_READY = true;
@@ -187,13 +202,30 @@ loadOpenCv(0);
 </script>
 <script>
 // ============================================================
-// TRẠNG THÁI CHÍNH — mỗi ca là 1 mảng ảnh (dataURL JPEG), giữ trong bộ nhớ, KHÔNG gửi lên đâu cả
+// TRẠNG THÁI CHÍNH — mỗi ca là 1 mảng ảnh, giữ trong bộ nhớ, KHÔNG gửi lên đâu cả
 // (toàn bộ xử lý chạy ngay trong trình duyệt, không cần server/GAS).
+//
+// Mỗi ảnh lưu 2 bản: `dataUrl` = bản nét đầy đủ để xuất PDF, `thumb` = bản nhỏ ~260px CHỈ để hiện
+// ô xem trước. LÝ DO (lỗi đã gặp): bản cũ dùng thẳng ảnh gốc cho lưới xem trước, mỗi lần chụp
+// thêm 1 tấm là vẽ lại toàn bộ lưới bằng ảnh full vài MB — chụp vài tấm là máy cạn bộ nhớ, OpenCV
+// (WASM) xin bộ nhớ không được nên dò cạnh lỗi âm thầm, từ đó không tự cắt được nữa.
 // ============================================================
-var CASE_PHOTOS = []; // [{ dataUrl }]
+var CASE_PHOTOS = []; // [{ dataUrl, thumb, w, h, cropped }]
 var sessionExportCount = 0;
 var currentStream = null;
+var currentTrack = null;
+var imageCapture = null;   // đối tượng ImageCapture (nếu trình duyệt hỗ trợ) — chụp ảnh tĩnh full độ phân giải
+var photoCaps = null;      // khả năng chụp ảnh tĩnh của camera (độ phân giải tối đa)
 var usingFrontCamera = false;
+var capturing = false;     // khoá nút chụp trong lúc đang lấy ảnh, tránh bấm chồng nhau
+
+// --- Thông số chất lượng ảnh -----------------------------------------------------------------
+// 2 con số này quyết định "ảnh xuất ra nét hay mờ" và "file PDF nặng hay nhẹ". Muốn file nhẹ hơn
+// thì giảm MAX_EDGE xuống 2600 (~220 DPI, vẫn đọc được chữ); muốn nét tối đa thì giữ 3500.
+var JPEG_QUALITY = 0.93;   // bản cũ để 0.90–0.92 và còn nén lại nhiều lần chồng lên nhau -> chữ mảnh bị nhoè
+var MAX_EDGE = 3500;       // cạnh dài tối đa của ảnh lưu lại. A4 in 300 DPI = 2480×3508 -> 3500 là vừa đủ
+var THUMB_EDGE = 260;      // cạnh dài của ảnh xem trước trong lưới
+var VIDEO_FALLBACK_MAX = 2560; // máy không hỗ trợ chụp ảnh tĩnh riêng thì đẩy khung xem trước lên tối đa mức này
 
 var video = document.getElementById('video');
 var cameraMsg = document.getElementById('cameraMsg');
@@ -201,6 +233,9 @@ var countBadge = document.getElementById('countBadge');
 var thumbGrid = document.getElementById('thumbGrid');
 var emptyHint = document.getElementById('emptyHint');
 var btnExportCase = document.getElementById('btnExportCase');
+var btnShutter = document.getElementById('btnShutter');
+var capStatus = document.getElementById('capStatus');
+var LAST_CAP = { method: '(chưa chụp)', w: 0, h: 0, cropped: false, note: '' };
 
 function showToast(msg, durationMs) {
   var t = document.createElement('div');
@@ -211,17 +246,33 @@ function showToast(msg, durationMs) {
   setTimeout(function () { t.remove(); }, durationMs || 2200);
 }
 
+function setCapStatus(html) {
+  capStatus.innerHTML = html;
+  capStatus.style.display = 'block';
+}
+
+// Ước lượng độ nét khi in/đọc ở khổ A4 (cạnh dài 297mm = 11.7 inch) — chỉ để nhìn con số biết ảnh
+// có đủ nét cho OCR không, không ảnh hưởng gì tới file xuất ra. Dưới ~150 DPI là chữ bắt đầu nhoè.
+function estimateDpi(w, h) {
+  return Math.round(Math.max(w, h) / 11.7);
+}
+
 // ------------------------------------------------------------
 // CAMERA — dùng getUserMedia để có khung hình trực tiếp + chụp nhanh liên tục (đúng nhu cầu
-// "chụp hàng loạt" của anh Hưng). Nếu trình duyệt/máy không hỗ trợ hoặc từ chối quyền, còn có ô
-// input file (capture=environment) ở dưới làm phương án dự phòng — mở camera hệ thống, chụp
-// từng tấm, vẫn gộp được vào cùng 1 ca như bình thường.
+// "chụp hàng loạt"). Nếu trình duyệt/máy không hỗ trợ hoặc từ chối quyền, còn có ô input file
+// (capture=environment) ở dưới làm phương án dự phòng.
+//
+// VÌ SAO BẢN CŨ CHỤP RA KHÔNG NÉT: bấm chụp trước đây chỉ là "vẽ lại cái khung hình đang xem".
+// Khung xem trước của trình duyệt thường chỉ 1280×720 hoặc 1920×1080, trong khi camera điện
+// thoại chụp thật được 8–12 triệu điểm ảnh. Tờ A4 nằm trong khung 1080px chỉ chiếm ~900px chiều
+// dài -> chưa tới 80 DPI, chữ trong phiếu nhoè hẳn. Cắt tự động còn làm nhỏ thêm nữa (chỉ giữ
+// phần tờ giấy). CamScanner nét vì nó lấy ảnh CHỤP THẬT. Bản này làm đúng như vậy:
+//   1. ImageCapture.takePhoto() -> ảnh chụp thật, độ phân giải lớn nhất máy cho phép.
+//   2. Máy không có ImageCapture (iPhone/Safari) -> kéo khung xem trước lên mức cao nhất có thể.
+//   3. Bật lấy nét liên tục (focusMode continuous) — mất nét cũng làm mờ y như thiếu điểm ảnh.
 // ------------------------------------------------------------
 function startCamera(preferFront) {
-  if (currentStream) {
-    currentStream.getTracks().forEach(function (t) { t.stop(); });
-    currentStream = null;
-  }
+  stopCurrentStream();
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     cameraMsg.textContent = 'Trình duyệt này không hỗ trợ mở camera trực tiếp — dùng ô "Chọn/chụp ảnh kiểu khác" bên dưới để chụp từng tấm.';
     return;
@@ -235,15 +286,51 @@ function startCamera(preferFront) {
   };
   navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
     currentStream = stream;
+    currentTrack = stream.getVideoTracks()[0] || null;
     video.srcObject = stream;
     cameraMsg.textContent = '';
-    video.onloadedmetadata = function () {
-      resizeOverlayToVideo();
-      startDetectLoop();
-    };
+    setupStillCapture();
+    // Bật vòng dò cạnh ở CẢ 2 sự kiện + 1 lần gọi thẳng: đã gặp cảnh gán onloadedmetadata sau khi
+    // sự kiện đã bắn xong (lúc quay lại app từ nền), vòng dò cạnh không bao giờ khởi động lại.
+    video.onloadedmetadata = function () { resizeOverlayToVideo(); startDetectLoop(); };
+    video.onplaying = function () { resizeOverlayToVideo(); startDetectLoop(); };
+    if (video.videoWidth) { resizeOverlayToVideo(); startDetectLoop(); }
+    var p = video.play(); if (p && p.catch) p.catch(function () {});
   }).catch(function (err) {
     cameraMsg.textContent = 'Không mở được camera (' + (err && err.message ? err.message : err) + ') — dùng ô "Chọn/chụp ảnh kiểu khác" bên dưới để chụp từng tấm thay thế.';
   });
+}
+
+function stopCurrentStream() {
+  if (currentStream) {
+    currentStream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+  }
+  currentStream = null; currentTrack = null; imageCapture = null; photoCaps = null;
+}
+
+function setupStillCapture() {
+  if (!currentTrack) return;
+  try {
+    var caps = currentTrack.getCapabilities ? currentTrack.getCapabilities() : null;
+    if (caps && caps.focusMode && caps.focusMode.indexOf && caps.focusMode.indexOf('continuous') >= 0) {
+      currentTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {});
+    }
+    if (window.ImageCapture) {
+      imageCapture = new window.ImageCapture(currentTrack);
+      if (imageCapture.getPhotoCapabilities) {
+        imageCapture.getPhotoCapabilities().then(function (pc) { photoCaps = pc; }).catch(function () { photoCaps = null; });
+      }
+    } else if (caps && caps.width && caps.width.max) {
+      var wMax = Math.min(caps.width.max, VIDEO_FALLBACK_MAX);
+      var hMax = (caps.height && caps.height.max) ? Math.min(caps.height.max, VIDEO_FALLBACK_MAX) : wMax;
+      currentTrack.applyConstraints({ width: { ideal: wMax }, height: { ideal: hMax } })
+        .then(function () { setTimeout(resizeOverlayToVideo, 300); })
+        .catch(function () {});
+    }
+  } catch (e) {
+    console.warn('Không chuẩn bị được chế độ chụp ảnh tĩnh:', e);
+    imageCapture = null;
+  }
 }
 
 document.getElementById('btnSwitchCam').addEventListener('click', function () {
@@ -251,31 +338,73 @@ document.getElementById('btnSwitchCam').addEventListener('click', function () {
   startCamera(usingFrontCamera);
 });
 
+// CHỐT AN TOÀN (watchdog): cứ 2 giây kiểm tra camera + vòng dò cạnh còn sống không, chết thì bật
+// lại. Bản cũ chỉ khởi động vòng dò cạnh đúng 1 lần lúc mở camera — chỉ cần 1 lần rời app (mở
+// bảng chia sẻ để lưu PDF, khoá màn hình, chuyển tab, nhận cuộc gọi...) là hệ điều hành thu hồi
+// luồng camera, khung hình đứng, từ đó không dò được khung giấy nữa nên mọi tấm chụp sau đều
+// không được cắt — đúng hiện tượng "chỉ cắt được tấm đầu".
+setInterval(function () {
+  if (!currentStream) return;
+  var t = currentStream.getVideoTracks()[0];
+  if (!t || t.readyState === 'ended') {
+    CV_DEBUG.camRestarts++;
+    startCamera(usingFrontCamera);
+    return;
+  }
+  if (!detectTimer) { CV_DEBUG.loopRestarts++; startDetectLoop(); }
+  if (video.paused) { var p = video.play(); if (p && p.catch) p.catch(function () {}); }
+}, 2000);
+
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden) return;
+  var t = currentStream ? currentStream.getVideoTracks()[0] : null;
+  if (!t || t.readyState === 'ended') { CV_DEBUG.camRestarts++; startCamera(usingFrontCamera); }
+  else { var p = video.play(); if (p && p.catch) p.catch(function () {}); startDetectLoop(); }
+});
+
 // ------------------------------------------------------------
-// TỰ ĐỘNG DÒ 4 GÓC TỜ PHIẾU (như viền xanh của CamScanner) — chạy bằng OpenCV.js, xử lý trên
-// ảnh đã thu nhỏ (nhanh hơn nhiều lần so với xử lý cả ảnh gốc), rồi quy đổi lại toạ độ về đúng
-// kích thước video thật để vẽ viền + để dùng lúc cắt khi chụp.
+// TỰ ĐỘNG DÒ 4 GÓC TỜ PHIẾU (như viền xanh của CamScanner) — chạy bằng OpenCV.js trên ảnh đã thu
+// nhỏ (nhanh hơn nhiều lần so với xử lý ảnh gốc).
+//
+// Vòng lặp này CHỈ để vẽ viền xanh xem trước. Lúc bấm chụp, app dò lại 4 góc TRÊN CHÍNH TẤM ẢNH
+// VỪA CHỤP chứ không xài lại kết quả của vòng lặp, vì: (1) ảnh chụp thật có kích thước và đôi khi
+// cả góc nhìn khác khung xem trước, toạ độ không quy đổi thẳng được — cắt theo toạ độ cũ là cắt
+// lệch; (2) nếu vòng lặp có trục trặc thì việc tự cắt vẫn chạy bình thường, không phụ thuộc.
 // ------------------------------------------------------------
 var detectOverlay = document.getElementById('detectOverlay');
 var detectCtx = detectOverlay.getContext('2d');
 var detectTimer = null;
-var lastDetectedQuad = null; // 4 điểm {x,y} theo đúng toạ độ pixel video gốc (videoWidth/videoHeight), thứ tự tl,tr,br,bl
-var DETECT_INTERVAL_MS = 350; // càng nhỏ càng mượt nhưng càng tốn máy — chỉnh tuỳ máy nếu thấy giật
-var DETECT_WORK_WIDTH = 420; // xử lý dò cạnh trên ảnh thu nhỏ về bề rộng này cho nhanh
-var DETECT_MIN_AREA_RATIO = 0.15; // khung dò được phải chiếm ít nhất 15% diện tích khung hình mới tính là hợp lệ (tránh dò trúng vật nhỏ lặt vặt)
+var lastDetectedQuad = null; // 4 điểm {x,y} theo toạ độ pixel video gốc, thứ tự tl,tr,br,bl
+var DETECT_INTERVAL_MS = 350;
+var DETECT_WORK_WIDTH = 420;      // dò cạnh trên ảnh thu nhỏ về bề rộng này cho nhanh
+var DETECT_MIN_AREA_RATIO = 0.15; // khung dò được phải chiếm ít nhất 15% khung hình mới tính (tránh dò trúng vật nhỏ)
+var workCanvas = document.createElement('canvas'); // DÙNG LẠI 1 canvas duy nhất cho mọi lần dò,
+                                                   // không tạo canvas mới mỗi 350ms (gây rác bộ nhớ)
 
 function resizeOverlayToVideo() {
   var rect = video.getBoundingClientRect();
-  detectOverlay.width = rect.width;
-  detectOverlay.height = rect.height;
+  detectOverlay.width = Math.round(rect.width);
+  detectOverlay.height = Math.round(rect.height);
 }
 
 function startDetectLoop() {
   if (detectTimer) clearInterval(detectTimer);
   detectTimer = setInterval(function () {
-    if (!document.getElementById('autoDetectToggle').checked) { lastDetectedQuad = null; detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height); return; }
-    if (!CV_READY || !currentStream || !video.videoWidth) return;
-    runDetectOnce();
+    if (!document.getElementById('autoDetectToggle').checked) {
+      lastDetectedQuad = null;
+      detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height);
+      return;
+    }
+    if (!CV_READY || !currentStream || !video.videoWidth || capturing) return;
+    CV_DEBUG.detectTicks++;
+    CV_DEBUG.lastDetectAt = new Date().toLocaleTimeString('vi-VN');
+    var scale = DETECT_WORK_WIDTH / video.videoWidth;
+    workCanvas.width = DETECT_WORK_WIDTH;
+    workCanvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    workCanvas.getContext('2d').drawImage(video, 0, 0, workCanvas.width, workCanvas.height);
+    var quad = detectQuadOnCanvas(workCanvas);
+    lastDetectedQuad = quad ? quad.map(function (p) { return { x: p.x / scale, y: p.y / scale }; }) : null;
+    drawDetectOverlay();
   }, DETECT_INTERVAL_MS);
 }
 
@@ -283,38 +412,41 @@ document.getElementById('autoDetectToggle').addEventListener('change', function 
   if (!this.checked) { lastDetectedQuad = null; detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height); }
 });
 
-// Bấm để tự xem tình trạng OpenCV.js thật đang thế nào — không cần mở console lập trình viên,
-// gửi luôn cho anh Hưng đọc là hiểu ngay chỗ nào đang kẹt.
+// Bấm để tự xem tình trạng thật — không cần mở console lập trình viên, chụp màn hình gửi đi là
+// đủ để biết đang kẹt ở chỗ nào (ảnh mờ do đâu, vì sao không tự cắt).
 document.getElementById('btnDebugInfo').addEventListener('click', function () {
+  var t = currentStream ? currentStream.getVideoTracks()[0] : null;
   var lines = [
-    'Nguồn đang dùng: ' + (CV_DEBUG.source || '(chưa bắt đầu tải)'),
-    'CV_READY: ' + CV_READY,
-    'Cách xác nhận sẵn sàng: ' + (CV_DEBUG.readyVia || '(chưa có)'),
-    'typeof cv: ' + (typeof cv),
-    'cv.Mat có tồn tại: ' + (typeof cv !== 'undefined' && cv ? typeof cv.Mat : '(cv chưa có)'),
-    'Đã hết giờ chờ (15s) mà chưa thấy sẵn sàng: ' + CV_DEBUG.pollTimedOut,
-    'Nguồn bị lỗi tải: ' + (CV_DEBUG.loadErrors.length ? CV_DEBUG.loadErrors.join(', ') : '(không có)'),
-    'Camera đang chạy: ' + (!!currentStream),
-    'Lần dò cạnh gần nhất: ' + (CV_DEBUG.lastDetectAt || '(chưa chạy lần nào)'),
-    'Lần đó có tìm thấy khung giấy không: ' + CV_DEBUG.lastDetectFound,
-    'Lỗi lần dò gần nhất (nếu có): ' + (CV_DEBUG.lastDetectError || '(không có)')
+    '--- ẢNH VỪA CHỤP ---',
+    'Lấy ảnh bằng cách: ' + LAST_CAP.method,
+    'Độ phân giải: ' + (LAST_CAP.w ? LAST_CAP.w + '×' + LAST_CAP.h + ' (~' + estimateDpi(LAST_CAP.w, LAST_CAP.h) + ' DPI khổ A4)' : '(chưa chụp)'),
+    'Có tự cắt được không: ' + (LAST_CAP.w ? (LAST_CAP.cropped ? 'CÓ' : 'KHÔNG — ' + (LAST_CAP.note || 'không rõ')) : '(chưa chụp)'),
+    '--- CAMERA ---',
+    'Máy hỗ trợ chụp ảnh tĩnh riêng (ImageCapture): ' + (!!window.ImageCapture) + (imageCapture ? ' — đang dùng' : ' — không dùng được'),
+    'Ảnh tĩnh tối đa máy báo: ' + (photoCaps && photoCaps.imageWidth ? photoCaps.imageWidth.max + '×' + (photoCaps.imageHeight ? photoCaps.imageHeight.max : '?') : '(không rõ)'),
+    'Khung hình xem trước: ' + (video.videoWidth || 0) + '×' + (video.videoHeight || 0),
+    'Camera đang chạy: ' + (!!currentStream) + (t ? ' (' + t.readyState + ')' : ''),
+    'Số lần tự mở lại camera: ' + CV_DEBUG.camRestarts,
+    '--- DÒ CẠNH ---',
+    'Nguồn OpenCV: ' + (CV_DEBUG.source || '(chưa bắt đầu tải)'),
+    'CV_READY: ' + CV_READY + ' (' + (CV_DEBUG.readyVia || 'chưa có') + ')',
+    'Vòng dò cạnh đang chạy: ' + (!!detectTimer) + ' — đã chạy ' + CV_DEBUG.detectTicks + ' lượt, tự bật lại ' + CV_DEBUG.loopRestarts + ' lần',
+    'Lần dò gần nhất: ' + (CV_DEBUG.lastDetectAt || '(chưa chạy lần nào)') + ' — thấy khung giấy: ' + CV_DEBUG.lastDetectFound,
+    'Lỗi lần dò gần nhất: ' + (CV_DEBUG.lastDetectError || '(không có)'),
+    'Nguồn OpenCV bị lỗi tải: ' + (CV_DEBUG.loadErrors.length ? CV_DEBUG.loadErrors.join(', ') : '(không có)')
   ];
   alert(lines.join('\n'));
 });
 
-function runDetectOnce() {
-  CV_DEBUG.lastDetectAt = new Date().toLocaleTimeString('vi-VN');
-  var vw = video.videoWidth, vh = video.videoHeight;
-  var scale = DETECT_WORK_WIDTH / vw;
-  var dw = DETECT_WORK_WIDTH, dh = Math.round(vh * scale);
-
-  var work = document.createElement('canvas');
-  work.width = dw; work.height = dh;
-  work.getContext('2d').drawImage(video, 0, 0, dw, dh);
-
+// Dò 4 góc tờ giấy trên 1 canvas bất kỳ. Trả về mảng 4 điểm theo toạ độ CHÍNH CANVAS ĐÓ (thứ tự
+// tl,tr,br,bl), hoặc null nếu không tìm được. Dùng chung cho cả vòng xem trước lẫn lúc bấm chụp.
+function detectQuadOnCanvas(cnv) {
+  if (!CV_READY) { CV_DEBUG.lastDetectError = 'OpenCV chưa sẵn sàng'; return null; }
   var src, gray, edges, kernel, contours, hierarchy;
+  var bestPts = null;
   try {
-    src = cv.imread(work);
+    var dw = cnv.width, dh = cnv.height;
+    src = cv.imread(cnv);
     gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
     cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
@@ -327,7 +459,7 @@ function runDetectOnce() {
     hierarchy = new cv.Mat();
     cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
-    var maxArea = 0, bestPts = null;
+    var maxArea = 0;
     var minArea = dw * dh * DETECT_MIN_AREA_RATIO;
     for (var i = 0; i < contours.size(); i++) {
       var cnt = contours.get(i);
@@ -345,19 +477,13 @@ function runDetectOnce() {
       }
       cnt.delete();
     }
-
-    if (bestPts) {
-      var real = bestPts.map(function (p) { return { x: p.x / scale, y: p.y / scale }; });
-      lastDetectedQuad = sortQuadPoints(real);
-    } else {
-      lastDetectedQuad = null;
-    }
     CV_DEBUG.lastDetectFound = !!bestPts;
     CV_DEBUG.lastDetectError = null;
   } catch (e) {
     console.warn('Lỗi dò cạnh (bỏ qua lần này):', e);
     CV_DEBUG.lastDetectError = (e && e.message) ? e.message : String(e);
-    lastDetectedQuad = null;
+    CV_DEBUG.lastDetectFound = false;
+    bestPts = null;
   } finally {
     if (src) src.delete();
     if (gray) gray.delete();
@@ -366,12 +492,24 @@ function runDetectOnce() {
     if (contours) contours.delete();
     if (hierarchy) hierarchy.delete();
   }
-
-  drawDetectOverlay();
+  return bestPts ? sortQuadPoints(bestPts) : null;
 }
 
-// Sắp lại 4 điểm bất kỳ về đúng thứ tự tl, tr, br, bl — cần thiết vì approxPolyDP trả điểm
-// không theo thứ tự cố định, mà phép "duỗi thẳng" (drawPerspectiveQuad) cần đúng thứ tự này.
+// Dò 4 góc trên 1 canvas ảnh lớn: thu nhỏ về DETECT_WORK_WIDTH để dò cho nhanh rồi quy đổi toạ độ
+// ngược lại về đúng độ phân giải ảnh gốc (cắt trên ảnh thu nhỏ thì ảnh ra vỡ hạt — lỗi đã gặp).
+function detectQuadOnFullImage(bigCanvas) {
+  var s = DETECT_WORK_WIDTH / bigCanvas.width;
+  if (s >= 1) return detectQuadOnCanvas(bigCanvas);
+  var probe = document.createElement('canvas');
+  probe.width = DETECT_WORK_WIDTH;
+  probe.height = Math.max(1, Math.round(bigCanvas.height * s));
+  probe.getContext('2d').drawImage(bigCanvas, 0, 0, probe.width, probe.height);
+  var q = detectQuadOnCanvas(probe);
+  return q ? q.map(function (p) { return { x: p.x / s, y: p.y / s }; }) : null;
+}
+
+// Sắp lại 4 điểm bất kỳ về đúng thứ tự tl, tr, br, bl — cần thiết vì approxPolyDP trả điểm không
+// theo thứ tự cố định, mà phép "duỗi thẳng" (drawPerspectiveQuad) cần đúng thứ tự này.
 function sortQuadPoints(pts) {
   var bySum = pts.slice().sort(function (a, b) { return (a.x + a.y) - (b.x + b.y); });
   var byDiff = pts.slice().sort(function (a, b) { return (a.x - a.y) - (b.x - b.y); });
@@ -380,11 +518,12 @@ function sortQuadPoints(pts) {
 
 function drawDetectOverlay() {
   var rect = video.getBoundingClientRect();
-  if (detectOverlay.width !== rect.width || detectOverlay.height !== rect.height) resizeOverlayToVideo();
+  if (detectOverlay.width !== Math.round(rect.width) || detectOverlay.height !== Math.round(rect.height)) resizeOverlayToVideo();
   detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height);
   if (!lastDetectedQuad) return;
   // video dùng object-fit:cover -> quy đổi toạ độ pixel video thật sang toạ độ hiển thị trên màn
   var vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
   var elW = detectOverlay.width, elH = detectOverlay.height;
   var videoRatio = vw / vh, elRatio = elW / elH;
   var drawW, drawH, offX, offY;
@@ -406,37 +545,172 @@ function drawDetectOverlay() {
   });
 }
 
-document.getElementById('btnShutter').addEventListener('click', function () {
-  if (!currentStream) { showToast('Camera chưa sẵn sàng.'); return; }
-  var vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw || !vh) { showToast('Camera chưa sẵn sàng, đợi 1 chút rồi chụp lại.'); return; }
-  var canvas = document.createElement('canvas');
-  canvas.width = vw; canvas.height = vh;
-  canvas.getContext('2d').drawImage(video, 0, 0, vw, vh);
+// ------------------------------------------------------------
+// LẤY 1 TẤM ẢNH TĨNH — ưu tiên ảnh chụp thật, lùi dần về cách kém hơn nếu máy không cho.
+// Thứ tự: takePhoto (nét nhất) -> vẽ lại khung hình xem trước (nét kém nhất, luôn chạy được).
+// Luôn có hàng rào thời gian: takePhoto trên vài dòng máy có thể treo không trả lời — quá 5 giây
+// thì tự chuyển sang cách dự phòng chứ không để bấm mãi không thấy gì.
+// ------------------------------------------------------------
+function captureStillCanvas() {
+  return new Promise(function (resolve, reject) {
+    var settled = false;
+    var wantHiRes = document.getElementById('hiresToggle').checked;
 
-  var dataUrl;
-  if (lastDetectedQuad && document.getElementById('autoDetectToggle').checked) {
-    // Có khung đã dò được ngay lúc bấm chụp -> tự "duỗi thẳng" + cắt luôn, dùng lại đúng hàm
-    // phối cảnh đã viết cho công cụ sửa ảnh tay (drawPerspectiveQuad) — cùng 1 cơ chế, không
-    // viết trùng code.
-    var outW = Math.round(Math.hypot(lastDetectedQuad[1].x - lastDetectedQuad[0].x, lastDetectedQuad[1].y - lastDetectedQuad[0].y));
-    var outH = Math.round(Math.hypot(lastDetectedQuad[3].x - lastDetectedQuad[0].x, lastDetectedQuad[3].y - lastDetectedQuad[0].y));
-    outW = Math.max(outW, 40); outH = Math.max(outH, 40);
-    var outCanvas = document.createElement('canvas');
-    outCanvas.width = outW; outCanvas.height = outH;
-    drawPerspectiveQuad(outCanvas.getContext('2d'), canvas, lastDetectedQuad, outW, outH);
-    dataUrl = outCanvas.toDataURL('image/jpeg', 0.92);
-  } else {
-    dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    function fallbackToVideo(reason) {
+      if (settled) return; settled = true;
+      var vw = video.videoWidth, vh = video.videoHeight;
+      if (!vw || !vh) { reject(new Error('Camera chưa sẵn sàng, đợi 1 chút rồi chụp lại')); return; }
+      var c = document.createElement('canvas');
+      c.width = vw; c.height = vh;
+      var ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(video, 0, 0, vw, vh);
+      resolve({ canvas: c, method: 'khung hình xem trước' + (reason ? ' (' + reason + ')' : '') });
+    }
+
+    if (!wantHiRes || !imageCapture || typeof imageCapture.takePhoto !== 'function') {
+      fallbackToVideo(wantHiRes ? 'máy không hỗ trợ chụp ảnh tĩnh riêng' : 'đang tắt "Chụp nét cao"');
+      return;
+    }
+
+    var guard = setTimeout(function () { fallbackToVideo('ảnh chụp thật quá lâu'); }, 5000);
+
+    var opts = {};
+    if (photoCaps && photoCaps.imageWidth && photoCaps.imageWidth.max) opts.imageWidth = photoCaps.imageWidth.max;
+    if (photoCaps && photoCaps.imageHeight && photoCaps.imageHeight.max) opts.imageHeight = photoCaps.imageHeight.max;
+
+    imageCapture.takePhoto(opts)
+      .catch(function () { return imageCapture.takePhoto(); }) // vài máy từ chối khi ép sẵn kích thước -> chụp mặc định
+      .then(blobToCanvas)
+      .then(function (c) {
+        clearTimeout(guard);
+        if (settled) return;
+        if (!c.width || !c.height) { fallbackToVideo('ảnh chụp thật rỗng'); return; }
+        settled = true;
+        resolve({ canvas: c, method: 'ảnh chụp thật của camera' });
+      })
+      .catch(function (err) {
+        clearTimeout(guard);
+        console.warn('takePhoto lỗi:', err);
+        fallbackToVideo('lỗi chụp ảnh thật');
+      });
+  });
+}
+
+function blobToCanvas(blob) {
+  var toCanvas = function (src, w, h) {
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    var ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(src, 0, 0);
+    return c;
+  };
+  if (window.createImageBitmap) {
+    var p;
+    // imageOrientation:'from-image' để ảnh chụp dọc không bị nằm ngang (thẻ EXIF xoay ảnh)
+    try { p = createImageBitmap(blob, { imageOrientation: 'from-image' }); }
+    catch (e) { p = createImageBitmap(blob); }
+    return p.catch(function () { return createImageBitmap(blob); }).then(function (bmp) {
+      var c = toCanvas(bmp, bmp.width, bmp.height);
+      if (bmp.close) { try { bmp.close(); } catch (e2) {} }
+      return c;
+    });
   }
+  return new Promise(function (resolve, reject) {
+    var url = URL.createObjectURL(blob);
+    var img = new Image();
+    img.onload = function () { var c = toCanvas(img, img.naturalWidth, img.naturalHeight); URL.revokeObjectURL(url); resolve(c); };
+    img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('không đọc được ảnh chụp')); };
+    img.src = url;
+  });
+}
 
-  addPhotoToCase(dataUrl);
+// ------------------------------------------------------------
+// BẤM CHỤP
+// ------------------------------------------------------------
+btnShutter.addEventListener('click', function () {
+  if (capturing) return;
+  if (!currentStream) { showToast('Camera chưa sẵn sàng.'); return; }
+  capturing = true;
+  btnShutter.disabled = true;
   flashShutter();
-  flyToBadge(dataUrl);
+
+  captureStillCanvas().then(function (res) {
+    var srcCanvas = res.canvas;
+    var autoOn = document.getElementById('autoDetectToggle').checked;
+    var quad = null, note = '';
+
+    if (!autoOn) {
+      note = 'đang tắt tự động cắt';
+    } else if (!CV_READY) {
+      note = 'công cụ dò cạnh chưa tải xong';
+    } else {
+      quad = detectQuadOnFullImage(srcCanvas); // dò NGAY TRÊN TẤM VỪA CHỤP, không xài lại viền xem trước
+      if (!quad) note = 'không thấy đủ 4 cạnh tờ phiếu';
+    }
+
+    var outCanvas = quad ? warpToCanvas(srcCanvas, quad) : downscaleToCanvas(srcCanvas);
+    var dataUrl = outCanvas.toDataURL('image/jpeg', JPEG_QUALITY); // CHỈ nén JPEG đúng 1 lần
+    var thumb = makeThumb(outCanvas);
+
+    LAST_CAP = { method: res.method, w: outCanvas.width, h: outCanvas.height, cropped: !!quad, note: note };
+    setCapStatus('<b>' + outCanvas.width + '×' + outCanvas.height + '</b> (~' + estimateDpi(outCanvas.width, outCanvas.height) + ' DPI khổ A4) · ' + res.method +
+      (quad ? ' · đã tự cắt' : ' · <span class="bad">chưa cắt: ' + note + '</span>'));
+    if (autoOn && !quad) showToast('Tấm này chưa tự cắt được (' + note + ') — cắt tay bằng nút ✎ nếu cần.', 2600);
+
+    addPhotoToCase({ dataUrl: dataUrl, thumb: thumb, w: outCanvas.width, h: outCanvas.height, cropped: !!quad });
+    flyToBadge(thumb);
+  }).catch(function (err) {
+    showToast('Chụp lỗi: ' + (err && err.message ? err.message : err), 3200);
+  }).then(function () {
+    capturing = false;
+    btnShutter.disabled = false;
+  });
 });
 
-// Chớp nhanh cả khung camera (như tiếng "tách" của máy ảnh) — phản hồi tức thì ngay lúc bấm,
-// trước khi chờ hiệu ứng bay xong.
+// "Duỗi thẳng" tờ phiếu theo 4 góc + thu về cạnh dài tối đa MAX_EDGE trong CÙNG 1 bước vẽ — cắt
+// xong rồi mới thu nhỏ là vẽ lại 2 lần, mất nét thêm 1 lần nữa không cần thiết.
+function warpToCanvas(srcCanvas, quad) {
+  var outW = Math.round(Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y));
+  var outH = Math.round(Math.hypot(quad[3].x - quad[0].x, quad[3].y - quad[0].y));
+  outW = Math.max(outW, 40); outH = Math.max(outH, 40);
+  var k = Math.min(1, MAX_EDGE / Math.max(outW, outH));
+  outW = Math.round(outW * k); outH = Math.round(outH * k);
+  var c = document.createElement('canvas');
+  c.width = outW; c.height = outH;
+  var ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  drawPerspectiveQuad(ctx, srcCanvas, quad, outW, outH);
+  return c;
+}
+
+function downscaleToCanvas(srcCanvas) {
+  var k = Math.min(1, MAX_EDGE / Math.max(srcCanvas.width, srcCanvas.height));
+  if (k === 1) return srcCanvas;
+  var c = document.createElement('canvas');
+  c.width = Math.round(srcCanvas.width * k);
+  c.height = Math.round(srcCanvas.height * k);
+  var ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(srcCanvas, 0, 0, c.width, c.height);
+  return c;
+}
+
+// Ảnh nhỏ chỉ dùng cho lưới xem trước + hiệu ứng bay — giữ ảnh gốc nét nguyên vẹn cho file PDF,
+// đồng thời không bắt trình duyệt vẽ vài tấm ảnh 12MP cùng lúc mỗi lần chụp thêm.
+function makeThumb(srcCanvas) {
+  var k = Math.min(1, THUMB_EDGE / Math.max(srcCanvas.width, srcCanvas.height));
+  var c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(srcCanvas.width * k));
+  c.height = Math.max(1, Math.round(srcCanvas.height * k));
+  var ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(srcCanvas, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.75);
+}
+
+// Chớp nhanh cả khung camera (như tiếng "tách" của máy ảnh) — phản hồi tức thì ngay lúc bấm.
 function flashShutter() {
   var flash = document.createElement('div');
   flash.style.cssText = 'position:absolute;inset:0;background:#fff;opacity:.85;pointer-events:none;z-index:12;transition:opacity .18s ease-out;';
@@ -445,16 +719,14 @@ function flashShutter() {
   setTimeout(function () { flash.remove(); }, 220);
 }
 
-// Hiệu ứng "bay" tấm ảnh vừa chụp thu nhỏ dần về đúng ô đếm số ảnh (góc trên camera) — anh Hưng
-// phản ánh bấm nhanh quá không biết đã chụp được chưa, vì danh sách ảnh nằm phía dưới màn hình
-// phải cuộn mới thấy. Bay về ô đếm (luôn nằm trong khung camera, không cần cuộn) để xác nhận
-// ngay tại chỗ, không phụ thuộc việc có nhìn xuống danh sách hay không.
-function flyToBadge(dataUrl) {
+// Hiệu ứng "bay" tấm ảnh vừa chụp thu nhỏ dần về đúng ô đếm số ảnh (góc trên camera) — bấm nhanh
+// quá không biết đã chụp được chưa, vì danh sách ảnh nằm phía dưới phải cuộn mới thấy.
+function flyToBadge(thumbUrl) {
   var camRect = document.getElementById('cameraWrap').getBoundingClientRect();
   var badgeRect = countBadge.getBoundingClientRect();
   var startW = camRect.width * 0.34, startH = startW * (4 / 3);
   var img = document.createElement('img');
-  img.src = dataUrl;
+  img.src = thumbUrl;
   img.style.cssText = 'position:fixed;z-index:60;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.5);pointer-events:none;' +
     'left:' + (camRect.left + camRect.width / 2 - startW / 2) + 'px;' +
     'top:' + (camRect.top + camRect.height / 2 - startH / 2) + 'px;' +
@@ -479,6 +751,8 @@ function pulseBadge() {
   setTimeout(function () { countBadge.style.transform = 'scale(1)'; }, 180);
 }
 
+// Ảnh chọn từ thư viện / camera hệ thống: ảnh này vốn đã nét (full độ phân giải của máy), chỉ cần
+// thu về MAX_EDGE, và cũng thử tự cắt luôn cho đồng nhất với ảnh chụp trong app.
 document.getElementById('fileFallback').addEventListener('change', function (e) {
   var files = Array.from(e.target.files || []);
   files.forEach(function (file) {
@@ -486,10 +760,20 @@ document.getElementById('fileFallback').addEventListener('change', function (e) 
     reader.onload = function () {
       var img = new Image();
       img.onload = function () {
-        var canvas = document.createElement('canvas');
-        canvas.width = img.width; canvas.height = img.height;
-        canvas.getContext('2d').drawImage(img, 0, 0);
-        addPhotoToCase(canvas.toDataURL('image/jpeg', 0.9));
+        var base = document.createElement('canvas');
+        base.width = img.naturalWidth || img.width;
+        base.height = img.naturalHeight || img.height;
+        var bctx = base.getContext('2d');
+        bctx.imageSmoothingEnabled = true; bctx.imageSmoothingQuality = 'high';
+        bctx.drawImage(img, 0, 0);
+
+        var quad = (document.getElementById('autoDetectToggle').checked && CV_READY) ? detectQuadOnFullImage(base) : null;
+        var out = quad ? warpToCanvas(base, quad) : downscaleToCanvas(base);
+        addPhotoToCase({
+          dataUrl: out.toDataURL('image/jpeg', JPEG_QUALITY),
+          thumb: makeThumb(out),
+          w: out.width, h: out.height, cropped: !!quad
+        });
         pulseBadge();
       };
       img.src = reader.result;
@@ -502,8 +786,8 @@ document.getElementById('fileFallback').addEventListener('change', function (e) 
 // ------------------------------------------------------------
 // QUẢN LÝ ẢNH TRONG 1 CA
 // ------------------------------------------------------------
-function addPhotoToCase(dataUrl) {
-  CASE_PHOTOS.push({ dataUrl: dataUrl });
+function addPhotoToCase(photo) {
+  CASE_PHOTOS.push(photo);
   renderThumbs();
 }
 
@@ -519,8 +803,9 @@ function renderThumbs() {
     var div = document.createElement('div');
     div.className = 'thumb';
     div.innerHTML =
-      '<img src="' + p.dataUrl + '">' +
+      '<img src="' + p.thumb + '">' +
       '<div class="idx">' + (i + 1) + '</div>' +
+      '<div class="px">' + (p.cropped ? '✂ ' : '') + estimateDpi(p.w, p.h) + ' DPI</div>' +
       '<div class="actions">' +
       (i > 0 ? '<button data-act="left" data-i="' + i + '">◀</button>' : '') +
       '<button data-act="edit" data-i="' + i + '">✎</button>' +
@@ -559,9 +844,8 @@ document.getElementById('btnClearCase').addEventListener('click', function () {
 });
 
 // ------------------------------------------------------------
-// MODAL SỬA ẢNH — xoay 90° từng nấc + cắt gọt bằng cách kéo 4 góc (không tự nhận diện, anh tự
-// kéo cho vừa khung phiếu). Đây là phần "chắc ăn" thay cho việc tự động dò cạnh như CamScanner —
-// làm bằng tay nhưng nhanh và ổn định, không phụ thuộc ánh sáng/độ nhăn của phiếu.
+// MODAL SỬA ẢNH — xoay 90° từng nấc + cắt gọt bằng cách kéo 4 góc. Phương án "chắc ăn" khi tự
+// động dò cạnh không ra khung (phiếu nhăn, nền cùng màu giấy, thiếu sáng...).
 // ------------------------------------------------------------
 var editIndex = -1;
 var editImg = null; // Image gốc đang sửa
@@ -611,6 +895,7 @@ function drawEditCanvas() {
   var w = editCanvas.width, h = editCanvas.height;
   editCtx.save();
   editCtx.clearRect(0, 0, w, h);
+  editCtx.imageSmoothingEnabled = true; editCtx.imageSmoothingQuality = 'high';
   editCtx.translate(w / 2, h / 2);
   editCtx.rotate(editRotation * Math.PI / 180);
   if (editRotation % 180 === 0) editCtx.drawImage(editImg, -w / 2, -h / 2, w, h);
@@ -693,37 +978,33 @@ document.getElementById('btnEditCancel').addEventListener('click', function () {
 
 document.getElementById('btnEditDone').addEventListener('click', function () {
   // Cắt bằng phối cảnh đơn giản: dùng khung tứ giác 4 góc đã kéo, "duỗi thẳng" về hình chữ nhật
-  // bằng phép biến đổi affine ghép từ 2 tam giác (đủ tốt cho ảnh chụp phiếu giấy, không cần thư
-  // viện ngoài).
+  // bằng phép biến đổi affine ghép từ 2 tam giác (đủ tốt cho ảnh chụp phiếu giấy).
   //
   // QUAN TRỌNG: cropPts đang tính theo toạ độ của editCanvas — vốn đã bị THU NHỎ để vừa màn hình
   // lúc sửa (xem layoutEditCanvas()), KHÔNG phải kích thước ảnh gốc. Nếu cắt thẳng trên đó thì
   // ảnh ra bị vỡ hạt (đã gặp thật). Phải quy đổi cropPts NGƯỢC LẠI về đúng độ phân giải ảnh gốc
   // trước khi cắt, để ảnh ra vẫn nét như ảnh chụp ban đầu.
   var editScale = parseFloat(editCanvas.dataset.scale) || 1;
-  var rotSz = rotatedSize(); // kích thước ảnh gốc SAU khi xoay (đổi chiều rộng/cao nếu xoay 90/270), CHƯA thu nhỏ
+  var rotSz = rotatedSize(); // kích thước ảnh gốc SAU khi xoay, CHƯA thu nhỏ
 
   var srcCanvas = document.createElement('canvas');
   srcCanvas.width = rotSz.w; srcCanvas.height = rotSz.h;
   var sctx = srcCanvas.getContext('2d');
+  sctx.imageSmoothingEnabled = true; sctx.imageSmoothingQuality = 'high';
   sctx.save();
   sctx.translate(srcCanvas.width / 2, srcCanvas.height / 2);
   sctx.rotate(editRotation * Math.PI / 180);
-  if (editRotation % 180 === 0) sctx.drawImage(editImg, -editImg.width / 2, -editImg.height / 2);
-  else sctx.drawImage(editImg, -editImg.width / 2, -editImg.height / 2);
+  sctx.drawImage(editImg, -editImg.width / 2, -editImg.height / 2);
   sctx.restore();
 
   var cropPtsFullRes = cropPts.map(function (p) { return { x: p.x / editScale, y: p.y / editScale }; });
+  var outCanvas = warpToCanvas(srcCanvas, cropPtsFullRes);
 
-  var outW = Math.round(Math.hypot(cropPtsFullRes[1].x - cropPtsFullRes[0].x, cropPtsFullRes[1].y - cropPtsFullRes[0].y));
-  var outH = Math.round(Math.hypot(cropPtsFullRes[3].x - cropPtsFullRes[0].x, cropPtsFullRes[3].y - cropPtsFullRes[0].y));
-  outW = Math.max(outW, 40); outH = Math.max(outH, 40);
-  var outCanvas = document.createElement('canvas');
-  outCanvas.width = outW; outCanvas.height = outH;
-  var octx = outCanvas.getContext('2d');
-  drawPerspectiveQuad(octx, srcCanvas, cropPtsFullRes, outW, outH);
-
-  CASE_PHOTOS[editIndex].dataUrl = outCanvas.toDataURL('image/jpeg', 0.92);
+  CASE_PHOTOS[editIndex].dataUrl = outCanvas.toDataURL('image/jpeg', JPEG_QUALITY);
+  CASE_PHOTOS[editIndex].thumb = makeThumb(outCanvas);
+  CASE_PHOTOS[editIndex].w = outCanvas.width;
+  CASE_PHOTOS[editIndex].h = outCanvas.height;
+  CASE_PHOTOS[editIndex].cropped = true;
   editModal.classList.remove('show');
   renderThumbs();
 });
@@ -757,56 +1038,58 @@ function drawTriangle(ctx, img, s0, s1, s2, d0, d1, d2) {
 // ------------------------------------------------------------
 // XUẤT PDF — gộp toàn bộ ảnh của ca hiện tại thành 1 file PDF nhiều trang, mỗi ảnh 1 trang khổ
 // A4, canh giữa và co giãn vừa trang (giữ nguyên tỉ lệ, không méo ảnh).
+//
+// jsPDF nhúng THẲNG ảnh JPEG vào PDF (không nén lại) khi truyền dataURL JPEG + format 'JPEG' —
+// nên độ nét của file PDF đúng bằng độ nét của ảnh chụp, không mất thêm lần nào nữa.
 // ------------------------------------------------------------
 btnExportCase.addEventListener('click', function () {
   if (!CASE_PHOTOS.length) return;
   var jsPDFCtor = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
   if (!jsPDFCtor) { showToast('Chưa tải được thư viện xuất PDF, kiểm tra lại mạng rồi thử lại.'); return; }
-  var pdf = new jsPDFCtor({ unit: 'pt', format: 'a4' });
+  var pdf = new jsPDFCtor({ unit: 'pt', format: 'a4', compress: false });
   var pageW = pdf.internal.pageSize.getWidth();
   var pageH = pdf.internal.pageSize.getHeight();
   var margin = 18;
 
-  var loaders = CASE_PHOTOS.map(function (p) {
-    return new Promise(function (resolve) {
-      var img = new Image();
-      img.onload = function () { resolve({ img: img, dataUrl: p.dataUrl }); };
-      img.src = p.dataUrl;
-    });
+  // Kích thước từng ảnh đã được lưu sẵn lúc chụp (p.w, p.h) nên KHÔNG cần tải/giải mã lại ảnh
+  // trước khi ghép PDF. Bản cũ tạo `new Image()` cho từng tấm rồi chờ onload — chỉ cần 1 tấm
+  // không giải mã được (máy thiếu bộ nhớ khi ảnh lớn) là nút "Xuất PDF" im lặng luôn, bấm mãi
+  // không ra file và cũng không báo lỗi gì.
+  var minDpi = 99999;
+  CASE_PHOTOS.forEach(function (p, idx) {
+    if (idx > 0) pdf.addPage();
+    var iw = p.w, ih = p.h;
+    minDpi = Math.min(minDpi, estimateDpi(iw, ih));
+    var maxW = pageW - margin * 2, maxH = pageH - margin * 2;
+    var scale = Math.min(maxW / iw, maxH / ih);
+    var w = iw * scale, h = ih * scale;
+    var x = (pageW - w) / 2, y = (pageH - h) / 2;
+    pdf.addImage(p.dataUrl, 'JPEG', x, y, w, h);
   });
 
-  Promise.all(loaders).then(function (loaded) {
-    loaded.forEach(function (item, idx) {
-      if (idx > 0) pdf.addPage();
-      var iw = item.img.width, ih = item.img.height;
-      var maxW = pageW - margin * 2, maxH = pageH - margin * 2;
-      var scale = Math.min(maxW / iw, maxH / ih);
-      var w = iw * scale, h = ih * scale;
-      var x = (pageW - w) / 2, y = (pageH - h) / 2;
-      pdf.addImage(item.dataUrl, 'JPEG', x, y, w, h);
-    });
-    var nameInput = document.getElementById('caseNameInput').value.trim();
-    var stamp = new Date();
-    var pad = function (n) { return String(n).padStart(2, '0'); };
-    var autoName = 'ca_' + stamp.getFullYear() + pad(stamp.getMonth() + 1) + pad(stamp.getDate()) + '_' + pad(stamp.getHours()) + pad(stamp.getMinutes()) + pad(stamp.getSeconds());
-    var fileName = (nameInput || autoName).replace(/[\\\/:*?"<>|]/g, '_') + '.pdf';
-    var pdfBlob = pdf.output('blob');
+  var nameInput = document.getElementById('caseNameInput').value.trim();
+  var stamp = new Date();
+  var pad = function (n) { return String(n).padStart(2, '0'); };
+  var autoName = 'ca_' + stamp.getFullYear() + pad(stamp.getMonth() + 1) + pad(stamp.getDate()) + '_' + pad(stamp.getHours()) + pad(stamp.getMinutes()) + pad(stamp.getSeconds());
+  var fileName = (nameInput || autoName).replace(/[\\\/:*?"<>|]/g, '_') + '.pdf';
+  var pdfBlob = pdf.output('blob');
 
-    sessionExportCount++;
-    document.getElementById('sessionCounter').textContent = 'Đã xuất ' + sessionExportCount + ' ca trong phiên này';
-    CASE_PHOTOS = [];
-    document.getElementById('caseNameInput').value = '';
-    renderThumbs();
-    openSaveModal(pdfBlob, fileName);
-  });
+  sessionExportCount++;
+  document.getElementById('sessionCounter').textContent = 'Đã xuất ' + sessionExportCount + ' ca trong phiên này';
+  var pages = CASE_PHOTOS.length;
+  CASE_PHOTOS = [];
+  document.getElementById('caseNameInput').value = '';
+  renderThumbs();
+  openSaveModal(pdfBlob, fileName, pages, minDpi);
 });
 
 // ------------------------------------------------------------
-// HỎI LƯU VÀO ĐÂU — anh Hưng phản ánh CamScanner cho chia sẻ thẳng vào 1 thư mục Drive, còn tải
-// trực tiếp thì không tìm thấy file trên điện thoại. "Chia sẻ..." dùng đúng bảng chia sẻ có sẵn
-// của điện thoại (Android/Chrome) — trong đó có sẵn lựa chọn "Drive", "Zalo", "Gmail"... y hệt
-// cách CamScanner làm, không cần tự viết kết nối riêng tới Google Drive. "Tải về máy" vẫn giữ
-// làm phương án dự phòng cho máy tính hoặc trình duyệt không hỗ trợ Chia sẻ.
+// HỎI LƯU VÀO ĐÂU — CamScanner cho chia sẻ thẳng vào 1 thư mục Drive, còn tải trực tiếp thì không
+// tìm thấy file trên điện thoại. "Chia sẻ..." dùng đúng bảng chia sẻ có sẵn của điện thoại
+// (Android/Chrome) — trong đó có sẵn lựa chọn "Drive", "Zalo", "Gmail"... y hệt cách CamScanner
+// làm, không cần tự viết kết nối riêng tới Google Drive. "Tải về máy" giữ làm phương án dự phòng
+// cho máy tính hoặc trình duyệt không hỗ trợ Chia sẻ.
+// ------------------------------------------------------------
 var saveModal, saveModalFileName;
 function ensureSaveModal() {
   if (saveModal) return;
@@ -817,7 +1100,8 @@ function ensureSaveModal() {
   saveModal.innerHTML =
     '<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;max-width:340px;width:88%;text-align:center;">' +
     '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">Đã tạo xong file PDF</div>' +
-    '<div id="saveModalFileName" style="font-size:12px;color:var(--muted);margin-bottom:18px;word-break:break-all;"></div>' +
+    '<div id="saveModalFileName" style="font-size:12px;color:var(--muted);margin-bottom:6px;word-break:break-all;"></div>' +
+    '<div id="saveModalQuality" style="font-size:11px;color:var(--muted);margin-bottom:16px;"></div>' +
     '<button class="btn btn-primary" id="btnSaveShare" style="width:100%;margin-bottom:10px;">📤 Chia sẻ / Lưu vào Drive...</button>' +
     '<button class="btn btn-secondary" id="btnSaveDownload" style="width:100%;margin-bottom:10px;">⬇ Tải về máy</button>' +
     '<button class="btn btn-secondary" id="btnSaveClose" style="width:100%;background:none;border:none;color:var(--muted);">Đóng, chụp ca tiếp theo</button>' +
@@ -826,10 +1110,13 @@ function ensureSaveModal() {
   document.getElementById('btnSaveClose').addEventListener('click', function () { saveModal.classList.remove('show'); });
 }
 
-function openSaveModal(pdfBlob, fileName) {
+function openSaveModal(pdfBlob, fileName, pages, minDpi) {
   ensureSaveModal();
   saveModalFileName = fileName;
   document.getElementById('saveModalFileName').textContent = fileName;
+  var q = document.getElementById('saveModalQuality');
+  q.textContent = pages + ' trang · ' + (pdfBlob.size / 1048576).toFixed(1) + ' MB · trang mờ nhất ~' + minDpi + ' DPI';
+  q.style.color = minDpi < 150 ? 'var(--warn)' : 'var(--muted)';
 
   var btnShare = document.getElementById('btnSaveShare');
   var canShareFile = false;
@@ -844,7 +1131,7 @@ function openSaveModal(pdfBlob, fileName) {
       navigator.share({ files: [file], title: fileName }).then(function () {
         saveModal.classList.remove('show');
       }).catch(function (err) {
-        if (err && err.name === 'AbortError') return; // anh tự bấm huỷ trên bảng chia sẻ, không phải lỗi
+        if (err && err.name === 'AbortError') return; // tự bấm huỷ trên bảng chia sẻ, không phải lỗi
         showToast('Chia sẻ lỗi: ' + (err && err.name ? err.name + ' - ' : '') + (err && err.message ? err.message : err) + '. Thử "Tải về máy" thay thế.', 6000);
       });
     } catch (e) {
