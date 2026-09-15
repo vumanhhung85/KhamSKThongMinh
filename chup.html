@@ -24,6 +24,9 @@
   #btnShutter:active{background:#ddd;}
   #btnSwitchCam{width:44px;height:44px;border-radius:50%;background:rgba(20,22,28,.55);color:#fff;border:1px solid rgba(255,255,255,.3);font-size:18px;cursor:pointer;}
   .count-badge{position:absolute;top:12px;right:12px;background:rgba(20,22,28,.7);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:13px;padding:4px 10px;border-radius:20px;}
+  #detectOverlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+  #autoToggleWrap{font-size:12px;user-select:none;}
+  #autoToggleWrap input{accent-color:var(--blue);width:14px;height:14px;}
 
   #fallbackRow{padding:10px 16px;border-bottom:1px solid var(--line);}
   #fallbackRow label{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:8px 12px;border-radius:8px;cursor:pointer;}
@@ -74,8 +77,12 @@
 
 <div id="cameraWrap">
   <video id="video" autoplay playsinline muted></video>
+  <canvas id="detectOverlay"></canvas>
   <div id="cameraMsg"></div>
   <div class="count-badge" id="countBadge" style="display:none;">0 ảnh</div>
+  <label class="count-badge" id="autoToggleWrap" style="left:12px;right:auto;display:flex;align-items:center;gap:6px;cursor:pointer;">
+    <input type="checkbox" id="autoDetectToggle" checked style="margin:0;"> <span id="autoToggleLabel">Tự động cắt</span>
+  </label>
   <div id="shutterRow">
     <button id="btnSwitchCam" title="Đổi camera">⟲</button>
     <button id="btnShutter" title="Chụp"></button>
@@ -120,6 +127,20 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// OpenCV.js dùng để tự dò 4 góc tờ phiếu ngay trên khung camera (giống viền xanh của CamScanner).
+// File khá nặng (~10MB) nên tải async — trong lúc chưa tải xong, app vẫn dùng bình thường, chỉ
+// là chưa có viền xanh + chưa tự cắt lúc chụp (vẫn chụp được, vẫn cắt tay bằng nút ✎ như cũ).
+var CV_READY = false;
+var Module = {
+  onRuntimeInitialized: function () {
+    CV_READY = true;
+    console.log('OpenCV.js đã sẵn sàng — bật tự động dò góc phiếu.');
+    document.getElementById('autoToggleLabel').textContent = 'Tự động cắt';
+  }
+};
+</script>
+<script async src="https://docs.opencv.org/4.x/opencv.js" onerror="document.getElementById('autoToggleLabel').textContent='Tự động cắt (lỗi tải, dùng cắt tay)';document.getElementById('autoDetectToggle').checked=false;document.getElementById('autoDetectToggle').disabled=true;"></script>
 <script>
 // ============================================================
 // TRẠNG THÁI CHÍNH — mỗi ca là 1 mảng ảnh (dataURL JPEG), giữ trong bộ nhớ, KHÔNG gửi lên đâu cả
@@ -171,6 +192,10 @@ function startCamera(preferFront) {
     currentStream = stream;
     video.srcObject = stream;
     cameraMsg.textContent = '';
+    video.onloadedmetadata = function () {
+      resizeOverlayToVideo();
+      startDetectLoop();
+    };
   }).catch(function (err) {
     cameraMsg.textContent = 'Không mở được camera (' + (err && err.message ? err.message : err) + ') — dùng ô "Chọn/chụp ảnh kiểu khác" bên dưới để chụp từng tấm thay thế.';
   });
@@ -181,6 +206,138 @@ document.getElementById('btnSwitchCam').addEventListener('click', function () {
   startCamera(usingFrontCamera);
 });
 
+// ------------------------------------------------------------
+// TỰ ĐỘNG DÒ 4 GÓC TỜ PHIẾU (như viền xanh của CamScanner) — chạy bằng OpenCV.js, xử lý trên
+// ảnh đã thu nhỏ (nhanh hơn nhiều lần so với xử lý cả ảnh gốc), rồi quy đổi lại toạ độ về đúng
+// kích thước video thật để vẽ viền + để dùng lúc cắt khi chụp.
+// ------------------------------------------------------------
+var detectOverlay = document.getElementById('detectOverlay');
+var detectCtx = detectOverlay.getContext('2d');
+var detectTimer = null;
+var lastDetectedQuad = null; // 4 điểm {x,y} theo đúng toạ độ pixel video gốc (videoWidth/videoHeight), thứ tự tl,tr,br,bl
+var DETECT_INTERVAL_MS = 350; // càng nhỏ càng mượt nhưng càng tốn máy — chỉnh tuỳ máy nếu thấy giật
+var DETECT_WORK_WIDTH = 420; // xử lý dò cạnh trên ảnh thu nhỏ về bề rộng này cho nhanh
+var DETECT_MIN_AREA_RATIO = 0.15; // khung dò được phải chiếm ít nhất 15% diện tích khung hình mới tính là hợp lệ (tránh dò trúng vật nhỏ lặt vặt)
+
+function resizeOverlayToVideo() {
+  var rect = video.getBoundingClientRect();
+  detectOverlay.width = rect.width;
+  detectOverlay.height = rect.height;
+}
+
+function startDetectLoop() {
+  if (detectTimer) clearInterval(detectTimer);
+  detectTimer = setInterval(function () {
+    if (!document.getElementById('autoDetectToggle').checked) { lastDetectedQuad = null; detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height); return; }
+    if (!CV_READY || !currentStream || !video.videoWidth) return;
+    runDetectOnce();
+  }, DETECT_INTERVAL_MS);
+}
+
+document.getElementById('autoDetectToggle').addEventListener('change', function () {
+  if (!this.checked) { lastDetectedQuad = null; detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height); }
+});
+
+function runDetectOnce() {
+  var vw = video.videoWidth, vh = video.videoHeight;
+  var scale = DETECT_WORK_WIDTH / vw;
+  var dw = DETECT_WORK_WIDTH, dh = Math.round(vh * scale);
+
+  var work = document.createElement('canvas');
+  work.width = dw; work.height = dh;
+  work.getContext('2d').drawImage(video, 0, 0, dw, dh);
+
+  var src, gray, edges, kernel, contours, hierarchy;
+  try {
+    src = cv.imread(work);
+    gray = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+    edges = new cv.Mat();
+    cv.Canny(gray, edges, 50, 150);
+    kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+    cv.dilate(edges, edges, kernel);
+
+    contours = new cv.MatVector();
+    hierarchy = new cv.Mat();
+    cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+
+    var maxArea = 0, bestPts = null;
+    var minArea = dw * dh * DETECT_MIN_AREA_RATIO;
+    for (var i = 0; i < contours.size(); i++) {
+      var cnt = contours.get(i);
+      var area = cv.contourArea(cnt);
+      if (area >= minArea && area > maxArea) {
+        var peri = cv.arcLength(cnt, true);
+        var approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+        if (approx.rows === 4 && cv.isContourConvex(approx)) {
+          maxArea = area;
+          var d = approx.data32S;
+          bestPts = [{ x: d[0], y: d[1] }, { x: d[2], y: d[3] }, { x: d[4], y: d[5] }, { x: d[6], y: d[7] }];
+        }
+        approx.delete();
+      }
+      cnt.delete();
+    }
+
+    if (bestPts) {
+      var real = bestPts.map(function (p) { return { x: p.x / scale, y: p.y / scale }; });
+      lastDetectedQuad = sortQuadPoints(real);
+    } else {
+      lastDetectedQuad = null;
+    }
+  } catch (e) {
+    console.warn('Lỗi dò cạnh (bỏ qua lần này):', e);
+    lastDetectedQuad = null;
+  } finally {
+    if (src) src.delete();
+    if (gray) gray.delete();
+    if (edges) edges.delete();
+    if (kernel) kernel.delete();
+    if (contours) contours.delete();
+    if (hierarchy) hierarchy.delete();
+  }
+
+  drawDetectOverlay();
+}
+
+// Sắp lại 4 điểm bất kỳ về đúng thứ tự tl, tr, br, bl — cần thiết vì approxPolyDP trả điểm
+// không theo thứ tự cố định, mà phép "duỗi thẳng" (drawPerspectiveQuad) cần đúng thứ tự này.
+function sortQuadPoints(pts) {
+  var bySum = pts.slice().sort(function (a, b) { return (a.x + a.y) - (b.x + b.y); });
+  var byDiff = pts.slice().sort(function (a, b) { return (a.x - a.y) - (b.x - b.y); });
+  return [bySum[0], byDiff[3], bySum[3], byDiff[0]]; // tl, tr, br, bl
+}
+
+function drawDetectOverlay() {
+  var rect = video.getBoundingClientRect();
+  if (detectOverlay.width !== rect.width || detectOverlay.height !== rect.height) resizeOverlayToVideo();
+  detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height);
+  if (!lastDetectedQuad) return;
+  // video dùng object-fit:cover -> quy đổi toạ độ pixel video thật sang toạ độ hiển thị trên màn
+  var vw = video.videoWidth, vh = video.videoHeight;
+  var elW = detectOverlay.width, elH = detectOverlay.height;
+  var videoRatio = vw / vh, elRatio = elW / elH;
+  var drawW, drawH, offX, offY;
+  if (videoRatio > elRatio) { drawH = elH; drawW = elH * videoRatio; offX = (elW - drawW) / 2; offY = 0; }
+  else { drawW = elW; drawH = elW / videoRatio; offX = 0; offY = (elH - drawH) / 2; }
+  var toDisp = function (p) { return { x: offX + p.x / vw * drawW, y: offY + p.y / vh * drawH }; };
+  var pts = lastDetectedQuad.map(toDisp);
+
+  detectCtx.strokeStyle = '#2fd15a';
+  detectCtx.lineWidth = 3;
+  detectCtx.beginPath();
+  detectCtx.moveTo(pts[0].x, pts[0].y);
+  for (var i = 1; i < 4; i++) detectCtx.lineTo(pts[i].x, pts[i].y);
+  detectCtx.closePath();
+  detectCtx.stroke();
+  pts.forEach(function (p) {
+    detectCtx.fillStyle = '#2fd15a';
+    detectCtx.beginPath(); detectCtx.arc(p.x, p.y, 5, 0, 2 * Math.PI); detectCtx.fill();
+  });
+}
+
 document.getElementById('btnShutter').addEventListener('click', function () {
   if (!currentStream) { showToast('Camera chưa sẵn sàng.'); return; }
   var vw = video.videoWidth, vh = video.videoHeight;
@@ -188,11 +345,71 @@ document.getElementById('btnShutter').addEventListener('click', function () {
   var canvas = document.createElement('canvas');
   canvas.width = vw; canvas.height = vh;
   canvas.getContext('2d').drawImage(video, 0, 0, vw, vh);
-  addPhotoToCase(canvas.toDataURL('image/jpeg', 0.9));
-  // phản hồi nhanh cho anh biết đã chụp — nhấp nháy khung camera 1 chút
-  document.getElementById('cameraWrap').style.outline = '3px solid #fff';
-  setTimeout(function () { document.getElementById('cameraWrap').style.outline = 'none'; }, 120);
+
+  var dataUrl;
+  if (lastDetectedQuad && document.getElementById('autoDetectToggle').checked) {
+    // Có khung đã dò được ngay lúc bấm chụp -> tự "duỗi thẳng" + cắt luôn, dùng lại đúng hàm
+    // phối cảnh đã viết cho công cụ sửa ảnh tay (drawPerspectiveQuad) — cùng 1 cơ chế, không
+    // viết trùng code.
+    var outW = Math.round(Math.hypot(lastDetectedQuad[1].x - lastDetectedQuad[0].x, lastDetectedQuad[1].y - lastDetectedQuad[0].y));
+    var outH = Math.round(Math.hypot(lastDetectedQuad[3].x - lastDetectedQuad[0].x, lastDetectedQuad[3].y - lastDetectedQuad[0].y));
+    outW = Math.max(outW, 40); outH = Math.max(outH, 40);
+    var outCanvas = document.createElement('canvas');
+    outCanvas.width = outW; outCanvas.height = outH;
+    drawPerspectiveQuad(outCanvas.getContext('2d'), canvas, lastDetectedQuad, outW, outH);
+    dataUrl = outCanvas.toDataURL('image/jpeg', 0.92);
+  } else {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  }
+
+  addPhotoToCase(dataUrl);
+  flashShutter();
+  flyToBadge(dataUrl);
 });
+
+// Chớp nhanh cả khung camera (như tiếng "tách" của máy ảnh) — phản hồi tức thì ngay lúc bấm,
+// trước khi chờ hiệu ứng bay xong.
+function flashShutter() {
+  var flash = document.createElement('div');
+  flash.style.cssText = 'position:absolute;inset:0;background:#fff;opacity:.85;pointer-events:none;z-index:12;transition:opacity .18s ease-out;';
+  document.getElementById('cameraWrap').appendChild(flash);
+  requestAnimationFrame(function () { flash.style.opacity = '0'; });
+  setTimeout(function () { flash.remove(); }, 220);
+}
+
+// Hiệu ứng "bay" tấm ảnh vừa chụp thu nhỏ dần về đúng ô đếm số ảnh (góc trên camera) — anh Hưng
+// phản ánh bấm nhanh quá không biết đã chụp được chưa, vì danh sách ảnh nằm phía dưới màn hình
+// phải cuộn mới thấy. Bay về ô đếm (luôn nằm trong khung camera, không cần cuộn) để xác nhận
+// ngay tại chỗ, không phụ thuộc việc có nhìn xuống danh sách hay không.
+function flyToBadge(dataUrl) {
+  var camRect = document.getElementById('cameraWrap').getBoundingClientRect();
+  var badgeRect = countBadge.getBoundingClientRect();
+  var startW = camRect.width * 0.34, startH = startW * (4 / 3);
+  var img = document.createElement('img');
+  img.src = dataUrl;
+  img.style.cssText = 'position:fixed;z-index:60;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.5);pointer-events:none;' +
+    'left:' + (camRect.left + camRect.width / 2 - startW / 2) + 'px;' +
+    'top:' + (camRect.top + camRect.height / 2 - startH / 2) + 'px;' +
+    'width:' + startW + 'px;height:' + startH + 'px;' +
+    'transition:left .45s cubic-bezier(.3,.6,.4,1),top .45s cubic-bezier(.3,.6,.4,1),width .45s cubic-bezier(.3,.6,.4,1),height .45s cubic-bezier(.3,.6,.4,1),opacity .45s ease-in;';
+  document.body.appendChild(img);
+  requestAnimationFrame(function () {
+    img.style.left = (badgeRect.left + badgeRect.width / 2 - 8) + 'px';
+    img.style.top = (badgeRect.top + badgeRect.height / 2 - 8) + 'px';
+    img.style.width = '16px'; img.style.height = '16px';
+    img.style.opacity = '0.15';
+  });
+  setTimeout(function () {
+    img.remove();
+    pulseBadge();
+  }, 460);
+}
+
+function pulseBadge() {
+  countBadge.style.transition = 'transform .18s ease-out';
+  countBadge.style.transform = 'scale(1.35)';
+  setTimeout(function () { countBadge.style.transform = 'scale(1)'; }, 180);
+}
 
 document.getElementById('fileFallback').addEventListener('change', function (e) {
   var files = Array.from(e.target.files || []);
@@ -205,6 +422,7 @@ document.getElementById('fileFallback').addEventListener('change', function (e) 
         canvas.width = img.width; canvas.height = img.height;
         canvas.getContext('2d').drawImage(img, 0, 0);
         addPhotoToCase(canvas.toDataURL('image/jpeg', 0.9));
+        pulseBadge();
       };
       img.src = reader.result;
     };
@@ -494,21 +712,80 @@ btnExportCase.addEventListener('click', function () {
     var pad = function (n) { return String(n).padStart(2, '0'); };
     var autoName = 'ca_' + stamp.getFullYear() + pad(stamp.getMonth() + 1) + pad(stamp.getDate()) + '_' + pad(stamp.getHours()) + pad(stamp.getMinutes()) + pad(stamp.getSeconds());
     var fileName = (nameInput || autoName).replace(/[\\\/:*?"<>|]/g, '_') + '.pdf';
-    pdf.save(fileName);
+    var pdfBlob = pdf.output('blob');
 
     sessionExportCount++;
     document.getElementById('sessionCounter').textContent = 'Đã xuất ' + sessionExportCount + ' ca trong phiên này';
     CASE_PHOTOS = [];
     document.getElementById('caseNameInput').value = '';
     renderThumbs();
-    showToast('Đã xuất "' + fileName + '" — sẵn sàng chụp ca tiếp theo.');
+    openSaveModal(pdfBlob, fileName);
   });
 });
+
+// ------------------------------------------------------------
+// HỎI LƯU VÀO ĐÂU — anh Hưng phản ánh CamScanner cho chia sẻ thẳng vào 1 thư mục Drive, còn tải
+// trực tiếp thì không tìm thấy file trên điện thoại. "Chia sẻ..." dùng đúng bảng chia sẻ có sẵn
+// của điện thoại (Android/Chrome) — trong đó có sẵn lựa chọn "Drive", "Zalo", "Gmail"... y hệt
+// cách CamScanner làm, không cần tự viết kết nối riêng tới Google Drive. "Tải về máy" vẫn giữ
+// làm phương án dự phòng cho máy tính hoặc trình duyệt không hỗ trợ Chia sẻ.
+var saveModal, saveModalFileName;
+function ensureSaveModal() {
+  if (saveModal) return;
+  saveModal = document.createElement('div');
+  saveModal.className = 'modal-overlay';
+  saveModal.style.alignItems = 'center';
+  saveModal.style.justifyContent = 'center';
+  saveModal.innerHTML =
+    '<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;max-width:340px;width:88%;text-align:center;">' +
+    '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">Đã tạo xong file PDF</div>' +
+    '<div id="saveModalFileName" style="font-size:12px;color:var(--muted);margin-bottom:18px;word-break:break-all;"></div>' +
+    '<button class="btn btn-primary" id="btnSaveShare" style="width:100%;margin-bottom:10px;">📤 Chia sẻ / Lưu vào Drive...</button>' +
+    '<button class="btn btn-secondary" id="btnSaveDownload" style="width:100%;margin-bottom:10px;">⬇ Tải về máy</button>' +
+    '<button class="btn btn-secondary" id="btnSaveClose" style="width:100%;background:none;border:none;color:var(--muted);">Đóng, chụp ca tiếp theo</button>' +
+    '</div>';
+  document.body.appendChild(saveModal);
+  document.getElementById('btnSaveClose').addEventListener('click', function () { saveModal.classList.remove('show'); });
+}
+
+function openSaveModal(pdfBlob, fileName) {
+  ensureSaveModal();
+  saveModalFileName = fileName;
+  document.getElementById('saveModalFileName').textContent = fileName;
+
+  var btnShare = document.getElementById('btnSaveShare');
+  var canShareFile = false;
+  try {
+    var testFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+    canShareFile = !!(navigator.canShare && navigator.canShare({ files: [testFile] }));
+  } catch (e) { canShareFile = false; }
+  btnShare.style.display = canShareFile ? 'block' : 'none';
+  btnShare.onclick = function () {
+    var file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+    navigator.share({ files: [file], title: fileName }).then(function () {
+      saveModal.classList.remove('show');
+    }).catch(function (err) {
+      if (err && err.name !== 'AbortError') showToast('Chia sẻ thất bại, thử "Tải về máy" thay thế.');
+    });
+  };
+
+  document.getElementById('btnSaveDownload').onclick = function () {
+    var url = URL.createObjectURL(pdfBlob);
+    var a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    saveModal.classList.remove('show');
+  };
+
+  saveModal.classList.add('show');
+}
 
 // Khởi động camera ngay khi mở trang.
 startCamera(false);
 window.addEventListener('resize', function () {
   if (editModal.classList.contains('show')) { layoutEditCanvas(); drawEditCanvas(); }
+  resizeOverlayToVideo();
 });
 </script>
 </body>
