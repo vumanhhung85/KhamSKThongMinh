@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Chụp phiếu — Trạm Y Tế Linh Xuân</title>
+<style>
+  :root{
+    --blue:#1a56db; --blue-dark:#1442a8; --bg:#0e1116; --panel:#171b22; --panel2:#1f242e;
+    --line:#2a303c; --text:#e8ebf0; --muted:#8b93a3; --warn:#f5a623; --danger:#e5484d; --good:#2fb170;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overscroll-behavior:none;}
+  body{padding-bottom:env(safe-area-inset-bottom);}
+  header{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:20;}
+  header h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.2px;}
+  header .case-counter{font-size:12px;color:var(--muted);}
+
+  #cameraWrap{position:relative;background:#000;width:100%;aspect-ratio:3/4;max-height:62vh;overflow:hidden;}
+  #video{width:100%;height:100%;object-fit:cover;display:block;}
+  #cameraMsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted);font-size:14px;line-height:1.5;}
+  #shutterRow{position:absolute;bottom:16px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:28px;}
+  #btnShutter{width:72px;height:72px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.35);cursor:pointer;}
+  #btnShutter:active{background:#ddd;}
+  #btnSwitchCam{width:44px;height:44px;border-radius:50%;background:rgba(20,22,28,.55);color:#fff;border:1px solid rgba(255,255,255,.3);font-size:18px;cursor:pointer;}
+  .count-badge{position:absolute;top:12px;right:12px;background:rgba(20,22,28,.7);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:13px;padding:4px 10px;border-radius:20px;}
+
+  #fallbackRow{padding:10px 16px;border-bottom:1px solid var(--line);}
+  #fallbackRow label{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:8px 12px;border-radius:8px;cursor:pointer;}
+  #fallbackRow input[type=file]{display:none;}
+
+  #caseSection{padding:14px 16px 90px;}
+  #caseNameRow{display:flex;gap:8px;margin-bottom:12px;}
+  #caseNameRow input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:10px 12px;border-radius:8px;font-size:14px;}
+  #caseNameRow input::placeholder{color:var(--muted);}
+
+  #thumbGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-bottom:16px;}
+  .thumb{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--panel2);}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .thumb .idx{position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;}
+  .thumb .actions{position:absolute;bottom:0;left:0;right:0;display:flex;background:rgba(0,0,0,.55);}
+  .thumb .actions button{flex:1;background:none;border:none;color:#fff;font-size:14px;padding:6px 0;cursor:pointer;border-right:1px solid rgba(255,255,255,.15);}
+  .thumb .actions button:last-child{border-right:none;}
+  .thumb .actions button:active{background:rgba(255,255,255,.15);}
+  #emptyHint{color:var(--muted);font-size:13px;text-align:center;padding:24px 0;}
+
+  #bottomBar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(14,17,22,0),var(--bg) 30%);display:flex;gap:10px;z-index:15;}
+  .btn{border:none;border-radius:10px;padding:13px 16px;font-size:14px;font-weight:600;cursor:pointer;}
+  .btn-primary{flex:1;background:var(--blue);color:#fff;}
+  .btn-primary:disabled{background:#334066;color:#7f8aa8;cursor:not-allowed;}
+  .btn-secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line);}
+
+  /* Modal sửa ảnh (xoay / cắt) */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:50;display:none;flex-direction:column;}
+  .modal-overlay.show{display:flex;}
+  .modal-top{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;color:#fff;}
+  .modal-top button{background:none;border:none;color:#fff;font-size:15px;cursor:pointer;padding:8px;}
+  #editStage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;}
+  #editCanvas{max-width:100%;max-height:100%;touch-action:none;}
+  .crop-handle{position:absolute;width:26px;height:26px;margin:-13px;border-radius:50%;background:#fff;border:2px solid var(--blue);touch-action:none;}
+  .modal-bottom{display:flex;gap:10px;padding:14px 16px calc(14px + env(safe-area-inset-bottom));}
+  .modal-bottom .btn{flex:1;}
+  #editHint{color:var(--muted);font-size:12px;text-align:center;padding:0 16px 6px;}
+
+  .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:8px;font-size:13px;z-index:80;box-shadow:0 4px 14px rgba(0,0,0,.4);}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📷 Chụp phiếu khám</h1>
+  <div class="case-counter" id="sessionCounter">Đã xuất 0 ca trong phiên này</div>
+</header>
+
+<div id="cameraWrap">
+  <video id="video" autoplay playsinline muted></video>
+  <div id="cameraMsg"></div>
+  <div class="count-badge" id="countBadge" style="display:none;">0 ảnh</div>
+  <div id="shutterRow">
+    <button id="btnSwitchCam" title="Đổi camera">⟲</button>
+    <button id="btnShutter" title="Chụp"></button>
+    <div style="width:44px;"></div>
+  </div>
+</div>
+
+<div id="fallbackRow">
+  <label>📁 Không mở được camera? Chọn/chụp ảnh kiểu khác
+    <input type="file" id="fileFallback" accept="image/*" capture="environment" multiple>
+  </label>
+</div>
+
+<div id="caseSection">
+  <div id="caseNameRow">
+    <input type="text" id="caseNameInput" placeholder="Tên/mã ca (để trống thì tự đặt tên theo giờ chụp)">
+  </div>
+  <div id="thumbGrid"></div>
+  <div id="emptyHint">Chưa có ảnh nào — bấm nút chụp ở trên để bắt đầu 1 ca mới.</div>
+</div>
+
+<div id="bottomBar">
+  <button class="btn btn-secondary" id="btnClearCase">Xoá hết ca này</button>
+  <button class="btn btn-primary" id="btnExportCase" disabled>Xong ca này — Xuất PDF</button>
+</div>
+
+<!-- Modal sửa ảnh: xoay + cắt (kéo 4 góc) -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal-top">
+    <button id="btnEditCancel">Huỷ</button>
+    <span>Sửa ảnh</span>
+    <button id="btnEditRotateL" title="Xoay trái">↺</button>
+  </div>
+  <div id="editStage">
+    <canvas id="editCanvas"></canvas>
+  </div>
+  <div id="editHint">Kéo 4 góc để cắt gọt phần thừa quanh tờ phiếu (không bắt buộc).</div>
+  <div class="modal-bottom">
+    <button class="btn btn-secondary" id="btnEditReset">Bỏ cắt (giữ nguyên ảnh)</button>
+    <button class="btn btn-primary" id="btnEditDone">Xong</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// ============================================================
+// TRẠNG THÁI CHÍNH — mỗi ca là 1 mảng ảnh (dataURL JPEG), giữ trong bộ nhớ, KHÔNG gửi lên đâu cả
+// (toàn bộ xử lý chạy ngay trong trình duyệt, không cần server/GAS).
+// ============================================================
+var CASE_PHOTOS = []; // [{ dataUrl }]
+var sessionExportCount = 0;
+var currentStream = null;
+var usingFrontCamera = false;
+
+var video = document.getElementById('video');
+var cameraMsg = document.getElementById('cameraMsg');
+var countBadge = document.getElementById('countBadge');
+var thumbGrid = document.getElementById('thumbGrid');
+var emptyHint = document.getElementById('emptyHint');
+var btnExportCase = document.getElementById('btnExportCase');
+
+function showToast(msg) {
+  var t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function () { t.remove(); }, 2200);
+}
+
+// ------------------------------------------------------------
+// CAMERA — dùng getUserMedia để có khung hình trực tiếp + chụp nhanh liên tục (đúng nhu cầu
+// "chụp hàng loạt" của anh Hưng). Nếu trình duyệt/máy không hỗ trợ hoặc từ chối quyền, còn có ô
+// input file (capture=environment) ở dưới làm phương án dự phòng — mở camera hệ thống, chụp
+// từng tấm, vẫn gộp được vào cùng 1 ca như bình thường.
+// ------------------------------------------------------------
+function startCamera(preferFront) {
+  if (currentStream) {
+    currentStream.getTracks().forEach(function (t) { t.stop(); });
+    currentStream = null;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    cameraMsg.textContent = 'Trình duyệt này không hỗ trợ mở camera trực tiếp — dùng ô "Chọn/chụp ảnh kiểu khác" bên dưới để chụp từng tấm.';
+    return;
+  }
+  var constraints = {
+    video: {
+      facingMode: preferFront ? 'user' : { ideal: 'environment' },
+      width: { ideal: 1920 }, height: { ideal: 1920 }
+    },
+    audio: false
+  };
+  navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+    currentStream = stream;
+    video.srcObject = stream;
+    cameraMsg.textContent = '';
+  }).catch(function (err) {
+    cameraMsg.textContent = 'Không mở được camera (' + (err && err.message ? err.message : err) + ') — dùng ô "Chọn/chụp ảnh kiểu khác" bên dưới để chụp từng tấm thay thế.';
+  });
+}
+
+document.getElementById('btnSwitchCam').addEventListener('click', function () {
+  usingFrontCamera = !usingFrontCamera;
+  startCamera(usingFrontCamera);
+});
+
+document.getElementById('btnShutter').addEventListener('click', function () {
+  if (!currentStream) { showToast('Camera chưa sẵn sàng.'); return; }
+  var vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) { showToast('Camera chưa sẵn sàng, đợi 1 chút rồi chụp lại.'); return; }
+  var canvas = document.createElement('canvas');
+  canvas.width = vw; canvas.height = vh;
+  canvas.getContext('2d').drawImage(video, 0, 0, vw, vh);
+  addPhotoToCase(canvas.toDataURL('image/jpeg', 0.9));
+  // phản hồi nhanh cho anh biết đã chụp — nhấp nháy khung camera 1 chút
+  document.getElementById('cameraWrap').style.outline = '3px solid #fff';
+  setTimeout(function () { document.getElementById('cameraWrap').style.outline = 'none'; }, 120);
+});
+
+document.getElementById('fileFallback').addEventListener('change', function (e) {
+  var files = Array.from(e.target.files || []);
+  files.forEach(function (file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var canvas = document.createElement('canvas');
+        canvas.width = img.width; canvas.height = img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        addPhotoToCase(canvas.toDataURL('image/jpeg', 0.9));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = ''; // cho phép chọn lại đúng file đó lần sau nếu cần
+});
+
+// ------------------------------------------------------------
+// QUẢN LÝ ẢNH TRONG 1 CA
+// ------------------------------------------------------------
+function addPhotoToCase(dataUrl) {
+  CASE_PHOTOS.push({ dataUrl: dataUrl });
+  renderThumbs();
+}
+
+function renderThumbs() {
+  countBadge.style.display = CASE_PHOTOS.length ? 'block' : 'none';
+  countBadge.textContent = CASE_PHOTOS.length + ' ảnh';
+  emptyHint.style.display = CASE_PHOTOS.length ? 'none' : 'block';
+  btnExportCase.disabled = CASE_PHOTOS.length === 0;
+  btnExportCase.textContent = CASE_PHOTOS.length ? ('Xong ca này — Xuất PDF (' + CASE_PHOTOS.length + ' trang)') : 'Xong ca này — Xuất PDF';
+
+  thumbGrid.innerHTML = '';
+  CASE_PHOTOS.forEach(function (p, i) {
+    var div = document.createElement('div');
+    div.className = 'thumb';
+    div.innerHTML =
+      '<img src="' + p.dataUrl + '">' +
+      '<div class="idx">' + (i + 1) + '</div>' +
+      '<div class="actions">' +
+      (i > 0 ? '<button data-act="left" data-i="' + i + '">◀</button>' : '') +
+      '<button data-act="edit" data-i="' + i + '">✎</button>' +
+      '<button data-act="del" data-i="' + i + '">🗑</button>' +
+      (i < CASE_PHOTOS.length - 1 ? '<button data-act="right" data-i="' + i + '">▶</button>' : '') +
+      '</div>';
+    thumbGrid.appendChild(div);
+  });
+}
+
+thumbGrid.addEventListener('click', function (e) {
+  var btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  var i = parseInt(btn.dataset.i, 10);
+  var act = btn.dataset.act;
+  if (act === 'del') {
+    CASE_PHOTOS.splice(i, 1);
+    renderThumbs();
+  } else if (act === 'left' && i > 0) {
+    var tmp = CASE_PHOTOS[i - 1]; CASE_PHOTOS[i - 1] = CASE_PHOTOS[i]; CASE_PHOTOS[i] = tmp;
+    renderThumbs();
+  } else if (act === 'right' && i < CASE_PHOTOS.length - 1) {
+    var tmp2 = CASE_PHOTOS[i + 1]; CASE_PHOTOS[i + 1] = CASE_PHOTOS[i]; CASE_PHOTOS[i] = tmp2;
+    renderThumbs();
+  } else if (act === 'edit') {
+    openEditModal(i);
+  }
+});
+
+document.getElementById('btnClearCase').addEventListener('click', function () {
+  if (!CASE_PHOTOS.length) return;
+  if (confirm('Xoá hết ' + CASE_PHOTOS.length + ' ảnh đang chụp cho ca này?')) {
+    CASE_PHOTOS = [];
+    renderThumbs();
+  }
+});
+
+// ------------------------------------------------------------
+// MODAL SỬA ẢNH — xoay 90° từng nấc + cắt gọt bằng cách kéo 4 góc (không tự nhận diện, anh tự
+// kéo cho vừa khung phiếu). Đây là phần "chắc ăn" thay cho việc tự động dò cạnh như CamScanner —
+// làm bằng tay nhưng nhanh và ổn định, không phụ thuộc ánh sáng/độ nhăn của phiếu.
+// ------------------------------------------------------------
+var editIndex = -1;
+var editImg = null; // Image gốc đang sửa
+var editRotation = 0; // 0/90/180/270, áp dụng TRƯỚC khi tính khung cắt
+var cropPts = null; // 4 điểm góc, toạ độ trên canvas hiển thị: [{x,y} tl, tr, br, bl]
+var draggingHandle = -1;
+var editModal = document.getElementById('editModal');
+var editCanvas = document.getElementById('editCanvas');
+var editCtx = editCanvas.getContext('2d');
+var handleEls = [];
+
+function openEditModal(i) {
+  editIndex = i;
+  editRotation = 0;
+  editImg = new Image();
+  editImg.onload = function () {
+    layoutEditCanvas();
+    resetCropToFull();
+    drawEditCanvas();
+  };
+  editImg.src = CASE_PHOTOS[i].dataUrl;
+  editModal.classList.add('show');
+}
+
+function rotatedSize() {
+  var w = editImg.width, h = editImg.height;
+  return (editRotation % 180 === 0) ? { w: w, h: h } : { w: h, h: w };
+}
+
+function layoutEditCanvas() {
+  var stage = document.getElementById('editStage');
+  var maxW = stage.clientWidth - 20, maxH = stage.clientHeight - 20;
+  var sz = rotatedSize();
+  var scale = Math.min(maxW / sz.w, maxH / sz.h, 1);
+  editCanvas.width = Math.round(sz.w * scale);
+  editCanvas.height = Math.round(sz.h * scale);
+  editCanvas.dataset.scale = scale;
+}
+
+function resetCropToFull() {
+  var w = editCanvas.width, h = editCanvas.height;
+  var m = Math.round(Math.min(w, h) * 0.04); // lề nhỏ để nhìn rõ 4 góc khi mới mở
+  cropPts = [{ x: m, y: m }, { x: w - m, y: m }, { x: w - m, y: h - m }, { x: m, y: h - m }];
+}
+
+function drawEditCanvas() {
+  var w = editCanvas.width, h = editCanvas.height;
+  editCtx.save();
+  editCtx.clearRect(0, 0, w, h);
+  editCtx.translate(w / 2, h / 2);
+  editCtx.rotate(editRotation * Math.PI / 180);
+  if (editRotation % 180 === 0) editCtx.drawImage(editImg, -w / 2, -h / 2, w, h);
+  else editCtx.drawImage(editImg, -h / 2, -w / 2, h, w);
+  editCtx.restore();
+
+  // vùng ngoài khung cắt làm tối lại cho dễ nhìn
+  editCtx.save();
+  editCtx.fillStyle = 'rgba(0,0,0,.45)';
+  editCtx.beginPath();
+  editCtx.rect(0, 0, w, h);
+  editCtx.moveTo(cropPts[0].x, cropPts[0].y);
+  for (var i = 1; i < 4; i++) editCtx.lineTo(cropPts[i].x, cropPts[i].y);
+  editCtx.closePath();
+  editCtx.fill('evenodd');
+  editCtx.restore();
+
+  editCtx.strokeStyle = '#1a56db'; editCtx.lineWidth = 2;
+  editCtx.beginPath();
+  editCtx.moveTo(cropPts[0].x, cropPts[0].y);
+  for (var j = 1; j < 4; j++) editCtx.lineTo(cropPts[j].x, cropPts[j].y);
+  editCtx.closePath(); editCtx.stroke();
+
+  positionHandles();
+}
+
+function positionHandles() {
+  var stage = document.getElementById('editStage');
+  if (!handleEls.length) {
+    for (var k = 0; k < 4; k++) {
+      var h = document.createElement('div');
+      h.className = 'crop-handle';
+      h.dataset.idx = k;
+      stage.appendChild(h);
+      handleEls.push(h);
+    }
+  }
+  var stageRect = stage.getBoundingClientRect();
+  var canvasRect = editCanvas.getBoundingClientRect();
+  var offX = canvasRect.left - stageRect.left, offY = canvasRect.top - stageRect.top;
+  handleEls.forEach(function (h, idx) {
+    h.style.left = (offX + cropPts[idx].x) + 'px';
+    h.style.top = (offY + cropPts[idx].y) + 'px';
+  });
+}
+
+function handlePointerDown(idx, e) {
+  draggingHandle = idx;
+  e.preventDefault();
+}
+handleEls = []; // sẽ được tạo trong positionHandles() lần đầu drawEditCanvas()
+
+document.getElementById('editStage').addEventListener('pointerdown', function (e) {
+  var t = e.target.closest('.crop-handle');
+  if (t) handlePointerDown(parseInt(t.dataset.idx, 10), e);
+});
+window.addEventListener('pointermove', function (e) {
+  if (draggingHandle < 0 || !editModal.classList.contains('show')) return;
+  var canvasRect = editCanvas.getBoundingClientRect();
+  var x = Math.max(0, Math.min(editCanvas.width, e.clientX - canvasRect.left));
+  var y = Math.max(0, Math.min(editCanvas.height, e.clientY - canvasRect.top));
+  cropPts[draggingHandle] = { x: x, y: y };
+  drawEditCanvas();
+});
+window.addEventListener('pointerup', function () { draggingHandle = -1; });
+
+document.getElementById('btnEditRotateL').addEventListener('click', function () {
+  editRotation = (editRotation + 270) % 360;
+  layoutEditCanvas();
+  resetCropToFull();
+  drawEditCanvas();
+});
+document.getElementById('btnEditReset').addEventListener('click', function () {
+  resetCropToFull();
+  drawEditCanvas();
+});
+document.getElementById('btnEditCancel').addEventListener('click', function () {
+  editModal.classList.remove('show');
+});
+
+document.getElementById('btnEditDone').addEventListener('click', function () {
+  // Cắt bằng phối cảnh đơn giản: dùng khung tứ giác 4 góc đã kéo, "duỗi thẳng" về hình chữ nhật
+  // bằng phép biến đổi affine ghép từ 2 tam giác (đủ tốt cho ảnh chụp phiếu giấy, không cần thư
+  // viện ngoài).
+  var srcCanvas = document.createElement('canvas');
+  srcCanvas.width = editCanvas.width; srcCanvas.height = editCanvas.height;
+  var sctx = srcCanvas.getContext('2d');
+  sctx.save();
+  sctx.translate(srcCanvas.width / 2, srcCanvas.height / 2);
+  sctx.rotate(editRotation * Math.PI / 180);
+  if (editRotation % 180 === 0) sctx.drawImage(editImg, -srcCanvas.width / 2, -srcCanvas.height / 2, srcCanvas.width, srcCanvas.height);
+  else sctx.drawImage(editImg, -srcCanvas.height / 2, -srcCanvas.width / 2, srcCanvas.height, srcCanvas.width);
+  sctx.restore();
+
+  var outW = Math.round(Math.hypot(cropPts[1].x - cropPts[0].x, cropPts[1].y - cropPts[0].y));
+  var outH = Math.round(Math.hypot(cropPts[3].x - cropPts[0].x, cropPts[3].y - cropPts[0].y));
+  outW = Math.max(outW, 40); outH = Math.max(outH, 40);
+  var outCanvas = document.createElement('canvas');
+  outCanvas.width = outW; outCanvas.height = outH;
+  var octx = outCanvas.getContext('2d');
+  drawPerspectiveQuad(octx, srcCanvas, cropPts, outW, outH);
+
+  CASE_PHOTOS[editIndex].dataUrl = outCanvas.toDataURL('image/jpeg', 0.92);
+  editModal.classList.remove('show');
+  renderThumbs();
+});
+
+// Vẽ 1 tứ giác nguồn (4 góc bất kỳ) thành hình chữ nhật đích, bằng cách chia đôi thành 2 tam
+// giác và dùng phép biến đổi affine (setTransform) cho từng tam giác — đủ dùng cho việc "duỗi
+// thẳng" ảnh chụp hơi lệch góc, không cần thư viện ngoài.
+function drawPerspectiveQuad(ctx, srcCanvas, pts, outW, outH) {
+  ctx.clearRect(0, 0, outW, outH);
+  drawTriangle(ctx, srcCanvas, pts[0], pts[1], pts[2], { x: 0, y: 0 }, { x: outW, y: 0 }, { x: outW, y: outH });
+  drawTriangle(ctx, srcCanvas, pts[0], pts[2], pts[3], { x: 0, y: 0 }, { x: outW, y: outH }, { x: 0, y: outH });
+}
+function drawTriangle(ctx, img, s0, s1, s2, d0, d1, d2) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(d0.x, d0.y); ctx.lineTo(d1.x, d1.y); ctx.lineTo(d2.x, d2.y);
+  ctx.closePath(); ctx.clip();
+  var denom = s0.x * (s1.y - s2.y) + s1.x * (s2.y - s0.y) + s2.x * (s0.y - s1.y);
+  if (Math.abs(denom) < 1e-6) { ctx.restore(); return; }
+  var a = (d0.x * (s1.y - s2.y) + d1.x * (s2.y - s0.y) + d2.x * (s0.y - s1.y)) / denom;
+  var b = (d0.y * (s1.y - s2.y) + d1.y * (s2.y - s0.y) + d2.y * (s0.y - s1.y)) / denom;
+  var c = (d0.x * (s2.x - s1.x) + d1.x * (s0.x - s2.x) + d2.x * (s1.x - s0.x)) / denom;
+  var d = (d0.y * (s2.x - s1.x) + d1.y * (s0.x - s2.x) + d2.y * (s1.x - s0.x)) / denom;
+  var e = (d0.x * (s1.x * s2.y - s2.x * s1.y) + d1.x * (s2.x * s0.y - s0.x * s2.y) + d2.x * (s0.x * s1.y - s1.x * s0.y)) / denom;
+  var f = (d0.y * (s1.x * s2.y - s2.x * s1.y) + d1.y * (s2.x * s0.y - s0.x * s2.y) + d2.y * (s0.x * s1.y - s1.x * s0.y)) / denom;
+  ctx.transform(a, b, c, d, e, f);
+  ctx.drawImage(img, 0, 0);
+  ctx.restore();
+}
+
+// ------------------------------------------------------------
+// XUẤT PDF — gộp toàn bộ ảnh của ca hiện tại thành 1 file PDF nhiều trang, mỗi ảnh 1 trang khổ
+// A4, canh giữa và co giãn vừa trang (giữ nguyên tỉ lệ, không méo ảnh).
+// ------------------------------------------------------------
+btnExportCase.addEventListener('click', function () {
+  if (!CASE_PHOTOS.length) return;
+  var jsPDFCtor = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (!jsPDFCtor) { showToast('Chưa tải được thư viện xuất PDF, kiểm tra lại mạng rồi thử lại.'); return; }
+  var pdf = new jsPDFCtor({ unit: 'pt', format: 'a4' });
+  var pageW = pdf.internal.pageSize.getWidth();
+  var pageH = pdf.internal.pageSize.getHeight();
+  var margin = 18;
+
+  var loaders = CASE_PHOTOS.map(function (p) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () { resolve({ img: img, dataUrl: p.dataUrl }); };
+      img.src = p.dataUrl;
+    });
+  });
+
+  Promise.all(loaders).then(function (loaded) {
+    loaded.forEach(function (item, idx) {
+      if (idx > 0) pdf.addPage();
+      var iw = item.img.width, ih = item.img.height;
+      var maxW = pageW - margin * 2, maxH = pageH - margin * 2;
+      var scale = Math.min(maxW / iw, maxH / ih);
+      var w = iw * scale, h = ih * scale;
+      var x = (pageW - w) / 2, y = (pageH - h) / 2;
+      pdf.addImage(item.dataUrl, 'JPEG', x, y, w, h);
+    });
+    var nameInput = document.getElementById('caseNameInput').value.trim();
+    var stamp = new Date();
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    var autoName = 'ca_' + stamp.getFullYear() + pad(stamp.getMonth() + 1) + pad(stamp.getDate()) + '_' + pad(stamp.getHours()) + pad(stamp.getMinutes()) + pad(stamp.getSeconds());
+    var fileName = (nameInput || autoName).replace(/[\\\/:*?"<>|]/g, '_') + '.pdf';
+    pdf.save(fileName);
+
+    sessionExportCount++;
+    document.getElementById('sessionCounter').textContent = 'Đã xuất ' + sessionExportCount + ' ca trong phiên này';
+    CASE_PHOTOS = [];
+    document.getElementById('caseNameInput').value = '';
+    renderThumbs();
+    showToast('Đã xuất "' + fileName + '" — sẵn sàng chụp ca tiếp theo.');
+  });
+});
+
+// Khởi động camera ngay khi mở trang.
+startCamera(false);
+window.addEventListener('resize', function () {
+  if (editModal.classList.contains('show')) { layoutEditCanvas(); drawEditCanvas(); }
+});
+</script>
+</body>
+</html>
