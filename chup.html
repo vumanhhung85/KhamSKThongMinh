@@ -139,6 +139,12 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- jscanify (MIT, ~1.8k sao trên GitHub: github.com/puffinsoft/jscanify) — thư viện dò cạnh tờ
+     giấy + cắt phối cảnh mã nguồn mở, thay cho việc tự viết lại đúng bài toán này. Nhẹ (vài chục
+     KB, không phải WASM) nên tải chặn bình thường (không async), giống cách tải jsPDF ở trên. Bản
+     thân file chỉ ĐĂNG KÝ biến toàn cục `jscanify`, chưa đụng vào `cv` — nên load trước hay sau
+     lúc OpenCV.js (bên dưới) chạy xong đều được, không phải chờ nhau. -->
+<script src="https://cdn.jsdelivr.net/gh/ColonelParrot/jscanify@v1.4.0/src/jscanify.min.js"></script>
 <script>
 // OpenCV.js dùng để tự dò 4 góc tờ phiếu (giống viền xanh của CamScanner).
 // File khá nặng (~10MB) nên tải async — trong lúc chưa tải xong (hoặc nếu tải lỗi hẳn), app vẫn
@@ -210,6 +216,17 @@ loadOpenCv(0);
 // thêm 1 tấm là vẽ lại toàn bộ lưới bằng ảnh full vài MB — chụp vài tấm là máy cạn bộ nhớ, OpenCV
 // (WASM) xin bộ nhớ không được nên dò cạnh lỗi âm thầm, từ đó không tự cắt được nữa.
 // ============================================================
+// jscanify chỉ cần tạo 1 lần, không phụ thuộc CV_READY (constructor của nó rỗng, chỉ đụng `cv`
+// bên trong các hàm findPaperContour/getCornerPoints/extractPaper lúc gọi thật). Nếu CDN lỗi
+// (rất hiếm, file nhỏ) thì tắt hẳn "Tự động cắt" ngay từ đầu — không âm thầm chạy dò cạnh kiểu cũ.
+var scanner = (typeof jscanify !== 'undefined') ? new jscanify() : null;
+if (!scanner) {
+  console.warn('Không tải được jscanify — tắt tự động cắt, chỉ còn cắt tay.');
+  document.getElementById('autoToggleLabel').textContent = 'Tự động cắt (thiếu thư viện, dùng cắt tay)';
+  var _autoToggleNoLib = document.getElementById('autoDetectToggle');
+  _autoToggleNoLib.checked = false; _autoToggleNoLib.disabled = true;
+}
+
 var CASE_PHOTOS = []; // [{ dataUrl, thumb, w, h, cropped }]
 var sessionExportCount = 0;
 var currentStream = null;
@@ -428,6 +445,7 @@ document.getElementById('btnDebugInfo').addEventListener('click', function () {
     'Camera đang chạy: ' + (!!currentStream) + (t ? ' (' + t.readyState + ')' : ''),
     'Số lần tự mở lại camera: ' + CV_DEBUG.camRestarts,
     '--- DÒ CẠNH ---',
+    'Thư viện jscanify: ' + (scanner ? 'đã tải (v1.4.0, MIT)' : 'LỖI — không tải được, chỉ còn cắt tay'),
     'Nguồn OpenCV: ' + (CV_DEBUG.source || '(chưa bắt đầu tải)'),
     'CV_READY: ' + CV_READY + ' (' + (CV_DEBUG.readyVia || 'chưa có') + ')',
     'Vòng dò cạnh đang chạy: ' + (!!detectTimer) + ' — đã chạy ' + CV_DEBUG.detectTicks + ' lượt, tự bật lại ' + CV_DEBUG.loopRestarts + ' lần',
@@ -438,61 +456,50 @@ document.getElementById('btnDebugInfo').addEventListener('click', function () {
   alert(lines.join('\n'));
 });
 
-// Dò 4 góc tờ giấy trên 1 canvas bất kỳ. Trả về mảng 4 điểm theo toạ độ CHÍNH CANVAS ĐÓ (thứ tự
-// tl,tr,br,bl), hoặc null nếu không tìm được. Dùng chung cho cả vòng xem trước lẫn lúc bấm chụp.
+// Dò 4 góc tờ giấy trên 1 canvas bất kỳ, bằng chính thư viện jscanify (không tự viết lại thuật
+// toán nữa). Trả về mảng 4 điểm theo toạ độ CHÍNH CANVAS ĐÓ, thứ tự tl,tr,br,bl — hoặc null nếu
+// không tìm được. Dùng chung cho cả vòng xem trước lẫn lúc bấm chụp.
+//
+// VÌ SAO ĐỔI SANG jscanify (MIT, github.com/puffinsoft/jscanify) thay vì tự viết:
+// Cách tự viết trước đây bắt buộc contour phải xấp xỉ ĐÚNG 4 điểm và LỒI (approxPolyDP +
+// isContourConvex) — chỉ cần mép phiếu hơi cong, có bóng, ảnh nhiễu hạt là contour ra 5-6 điểm và
+// THẤT BẠI HOÀN TOÀN, không cắt được (đúng kiểu lỗi "không thấy đủ 4 cạnh" hay gặp, đặc biệt từ
+// tấm thứ 2 trở đi khi góc chụp/ánh sáng đổi chút ít). jscanify.getCornerPoints() không đòi hỏi
+// vậy: lấy hình chữ nhật bao nhỏ nhất (minAreaRect) để có tâm, chia mặt phẳng quanh tâm thành 4
+// góc phần tư, mỗi góc phần tư giữ điểm XA TÂM NHẤT — luôn ra đủ 4 góc dù contour lởm chởm bao
+// nhiêu điểm, miễn đúng là 1 tờ giấy. Thư viện đã có ~1.8k sao, được nhiều dự án dùng, nên tin
+// tưởng thuật toán dò contour (findPaperContour) và cắt phối cảnh (extractPaper, xem warpToCanvasCv
+// bên dưới) của họ hơn là tự dò lỗi trong bản tự viết.
 function detectQuadOnCanvas(cnv) {
   if (!CV_READY) { CV_DEBUG.lastDetectError = 'OpenCV chưa sẵn sàng'; return null; }
-  var src, gray, edges, kernel, contours, hierarchy;
-  var bestPts = null;
+  if (!scanner) { CV_DEBUG.lastDetectError = 'jscanify chưa tải được'; return null; }
+  var img;
+  var pts = null;
   try {
-    var dw = cnv.width, dh = cnv.height;
-    src = cv.imread(cnv);
-    gray = new cv.Mat();
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-    edges = new cv.Mat();
-    cv.Canny(gray, edges, 50, 150);
-    kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-    cv.dilate(edges, edges, kernel);
-
-    contours = new cv.MatVector();
-    hierarchy = new cv.Mat();
-    cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-
-    var maxArea = 0;
-    var minArea = dw * dh * DETECT_MIN_AREA_RATIO;
-    for (var i = 0; i < contours.size(); i++) {
-      var cnt = contours.get(i);
-      var area = cv.contourArea(cnt);
-      if (area >= minArea && area > maxArea) {
-        var peri = cv.arcLength(cnt, true);
-        var approx = new cv.Mat();
-        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-        if (approx.rows === 4 && cv.isContourConvex(approx)) {
-          maxArea = area;
-          var d = approx.data32S;
-          bestPts = [{ x: d[0], y: d[1] }, { x: d[2], y: d[3] }, { x: d[4], y: d[5] }, { x: d[6], y: d[7] }];
+    img = cv.imread(cnv);
+    var contour = scanner.findPaperContour(img); // trả về contour LỚN NHẤT tìm được, có thể null
+    if (contour) {
+      var minArea = cnv.width * cnv.height * DETECT_MIN_AREA_RATIO;
+      var area = cv.contourArea(contour);
+      if (area >= minArea) {
+        var c = scanner.getCornerPoints(contour);
+        if (c.topLeftCorner && c.topRightCorner && c.bottomLeftCorner && c.bottomRightCorner) {
+          pts = [c.topLeftCorner, c.topRightCorner, c.bottomRightCorner, c.bottomLeftCorner]; // tl,tr,br,bl
         }
-        approx.delete();
       }
-      cnt.delete();
+      contour.delete();
     }
-    CV_DEBUG.lastDetectFound = !!bestPts;
+    CV_DEBUG.lastDetectFound = !!pts;
     CV_DEBUG.lastDetectError = null;
   } catch (e) {
     console.warn('Lỗi dò cạnh (bỏ qua lần này):', e);
     CV_DEBUG.lastDetectError = (e && e.message) ? e.message : String(e);
     CV_DEBUG.lastDetectFound = false;
-    bestPts = null;
+    pts = null;
   } finally {
-    if (src) src.delete();
-    if (gray) gray.delete();
-    if (edges) edges.delete();
-    if (kernel) kernel.delete();
-    if (contours) contours.delete();
-    if (hierarchy) hierarchy.delete();
+    if (img) img.delete();
   }
-  return bestPts ? sortQuadPoints(bestPts) : null;
+  return pts;
 }
 
 // Dò 4 góc trên 1 canvas ảnh lớn: thu nhỏ về DETECT_WORK_WIDTH để dò cho nhanh rồi quy đổi toạ độ
@@ -506,14 +513,6 @@ function detectQuadOnFullImage(bigCanvas) {
   probe.getContext('2d').drawImage(bigCanvas, 0, 0, probe.width, probe.height);
   var q = detectQuadOnCanvas(probe);
   return q ? q.map(function (p) { return { x: p.x / s, y: p.y / s }; }) : null;
-}
-
-// Sắp lại 4 điểm bất kỳ về đúng thứ tự tl, tr, br, bl — cần thiết vì approxPolyDP trả điểm không
-// theo thứ tự cố định, mà phép "duỗi thẳng" (drawPerspectiveQuad) cần đúng thứ tự này.
-function sortQuadPoints(pts) {
-  var bySum = pts.slice().sort(function (a, b) { return (a.x + a.y) - (b.x + b.y); });
-  var byDiff = pts.slice().sort(function (a, b) { return (a.x - a.y) - (b.x - b.y); });
-  return [bySum[0], byDiff[3], bySum[3], byDiff[0]]; // tl, tr, br, bl
 }
 
 function drawDetectOverlay() {
@@ -650,7 +649,7 @@ btnShutter.addEventListener('click', function () {
       if (!quad) note = 'không thấy đủ 4 cạnh tờ phiếu';
     }
 
-    var outCanvas = quad ? warpToCanvas(srcCanvas, quad) : downscaleToCanvas(srcCanvas);
+    var outCanvas = quad ? warpToCanvasCv(srcCanvas, quad) : downscaleToCanvas(srcCanvas);
     var dataUrl = outCanvas.toDataURL('image/jpeg', JPEG_QUALITY); // CHỈ nén JPEG đúng 1 lần
     var thumb = makeThumb(outCanvas);
 
@@ -669,19 +668,42 @@ btnShutter.addEventListener('click', function () {
   });
 });
 
-// "Duỗi thẳng" tờ phiếu theo 4 góc + thu về cạnh dài tối đa MAX_EDGE trong CÙNG 1 bước vẽ — cắt
-// xong rồi mới thu nhỏ là vẽ lại 2 lần, mất nét thêm 1 lần nữa không cần thiết.
-function warpToCanvas(srcCanvas, quad) {
+// Từ toạ độ 4 góc, tính kích thước trang xuất ra (thu về cạnh dài tối đa MAX_EDGE) — dùng chung
+// cho cả 2 cách cắt bên dưới.
+function outSizeForQuad(quad) {
   var outW = Math.round(Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y));
   var outH = Math.round(Math.hypot(quad[3].x - quad[0].x, quad[3].y - quad[0].y));
   outW = Math.max(outW, 40); outH = Math.max(outH, 40);
   var k = Math.min(1, MAX_EDGE / Math.max(outW, outH));
-  outW = Math.round(outW * k); outH = Math.round(outH * k);
+  return { w: Math.round(outW * k), h: Math.round(outH * k) };
+}
+
+// CẮT BẰNG jscanify (cv.warpPerspective thật qua scanner.extractPaper) — dùng cho toạ độ do TỰ
+// ĐỘNG dò ra. Phép chiếu (homography) đúng chuẩn, không có vệt gãy dọc đường chéo như cách cắt
+// tay bằng 2 tam giác bên dưới (warpToCanvasManual) — rõ nhất ở những tấm chụp hơi xiên góc.
+// Truyền sẵn cornerPoints cho extractPaper() để nó bỏ qua bước dò lại từ đầu (đỡ tốn máy — xem
+// ghi chú "optimized" ở release v1.4.0 của jscanify).
+function warpToCanvasCv(srcCanvas, quad) {
+  var sz = outSizeForQuad(quad);
+  var corners = {
+    topLeftCorner: quad[0], topRightCorner: quad[1],
+    bottomRightCorner: quad[2], bottomLeftCorner: quad[3]
+  };
+  var out = null;
+  try { out = scanner.extractPaper(srcCanvas, sz.w, sz.h, corners); } catch (e) { console.warn('extractPaper lỗi:', e); }
+  return out || downscaleToCanvas(srcCanvas); // cực hiếm khi lỗi — vẫn giữ được tấm ảnh, chỉ là chưa cắt
+}
+
+// CẮT TAY bằng 2 tam giác vẽ trên canvas 2D (KHÔNG phụ thuộc OpenCV/jscanify) — dùng cho khung 4
+// góc anh tự kéo trong modal sửa ảnh, để việc cắt tay luôn chạy được kể cả khi OpenCV/jscanify tải
+// lỗi hoàn toàn (đây chính là lý do "chắc ăn" của cắt tay, không được đổi sang phụ thuộc OpenCV).
+function warpToCanvasManual(srcCanvas, quad) {
+  var sz = outSizeForQuad(quad);
   var c = document.createElement('canvas');
-  c.width = outW; c.height = outH;
+  c.width = sz.w; c.height = sz.h;
   var ctx = c.getContext('2d');
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  drawPerspectiveQuad(ctx, srcCanvas, quad, outW, outH);
+  drawPerspectiveQuad(ctx, srcCanvas, quad, sz.w, sz.h);
   return c;
 }
 
@@ -768,7 +790,7 @@ document.getElementById('fileFallback').addEventListener('change', function (e) 
         bctx.drawImage(img, 0, 0);
 
         var quad = (document.getElementById('autoDetectToggle').checked && CV_READY) ? detectQuadOnFullImage(base) : null;
-        var out = quad ? warpToCanvas(base, quad) : downscaleToCanvas(base);
+        var out = quad ? warpToCanvasCv(base, quad) : downscaleToCanvas(base);
         addPhotoToCase({
           dataUrl: out.toDataURL('image/jpeg', JPEG_QUALITY),
           thumb: makeThumb(out),
@@ -998,7 +1020,7 @@ document.getElementById('btnEditDone').addEventListener('click', function () {
   sctx.restore();
 
   var cropPtsFullRes = cropPts.map(function (p) { return { x: p.x / editScale, y: p.y / editScale }; });
-  var outCanvas = warpToCanvas(srcCanvas, cropPtsFullRes);
+  var outCanvas = warpToCanvasManual(srcCanvas, cropPtsFullRes);
 
   CASE_PHOTOS[editIndex].dataUrl = outCanvas.toDataURL('image/jpeg', JPEG_QUALITY);
   CASE_PHOTOS[editIndex].thumb = makeThumb(outCanvas);
