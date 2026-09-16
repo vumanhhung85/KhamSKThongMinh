@@ -140,10 +140,9 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <!-- jscanify (MIT, ~1.8k sao trên GitHub: github.com/puffinsoft/jscanify) — thư viện dò cạnh tờ
-     giấy + cắt phối cảnh mã nguồn mở, thay cho việc tự viết lại đúng bài toán này. Nhẹ (vài chục
-     KB, không phải WASM) nên tải chặn bình thường (không async), giống cách tải jsPDF ở trên. Bản
-     thân file chỉ ĐĂNG KÝ biến toàn cục `jscanify`, chưa đụng vào `cv` — nên load trước hay sau
-     lúc OpenCV.js (bên dưới) chạy xong đều được, không phải chờ nhau. -->
+     giấy + cắt phối cảnh mã nguồn mở. Nhẹ (vài chục KB, không phải WASM) nên tải chặn bình thường
+     (không async). Bản thân file chỉ ĐĂNG KÝ biến toàn cục `jscanify`, chưa đụng vào `cv` — nên
+     load trước hay sau lúc OpenCV.js (bên dưới) chạy xong đều được, không phải chờ nhau. -->
 <script src="https://cdn.jsdelivr.net/gh/ColonelParrot/jscanify@v1.4.0/src/jscanify.min.js"></script>
 <script>
 // OpenCV.js dùng để tự dò 4 góc tờ phiếu (giống viền xanh của CamScanner).
@@ -213,8 +212,8 @@ loadOpenCv(0);
 //
 // Mỗi ảnh lưu 2 bản: `dataUrl` = bản nét đầy đủ để xuất PDF, `thumb` = bản nhỏ ~260px CHỈ để hiện
 // ô xem trước. LÝ DO (lỗi đã gặp): bản cũ dùng thẳng ảnh gốc cho lưới xem trước, mỗi lần chụp
-// thêm 1 tấm là vẽ lại toàn bộ lưới bằng ảnh full vài MB — chụp vài tấm là máy cạn bộ nhớ, OpenCV
-// (WASM) xin bộ nhớ không được nên dò cạnh lỗi âm thầm, từ đó không tự cắt được nữa.
+// thêm 1 tấm là vẽ lại toàn bộ lưới bằng ảnh full vài MB — chụp vài tấm là máy cạn bộ nhớ, khiến
+// các thao tác vẽ/đọc điểm ảnh sau đó chạy chậm hẳn hoặc lỗi.
 // ============================================================
 // jscanify chỉ cần tạo 1 lần, không phụ thuộc CV_READY (constructor của nó rỗng, chỉ đụng `cv`
 // bên trong các hàm findPaperContour/getCornerPoints/extractPaper lúc gọi thật). Nếu CDN lỗi
@@ -380,18 +379,30 @@ document.addEventListener('visibilitychange', function () {
 });
 
 // ------------------------------------------------------------
-// TỰ ĐỘNG DÒ 4 GÓC TỜ PHIẾU (như viền xanh của CamScanner) — chạy bằng OpenCV.js trên ảnh đã thu
-// nhỏ (nhanh hơn nhiều lần so với xử lý ảnh gốc).
+// TỰ ĐỘNG DÒ 4 GÓC TỜ PHIẾU (như viền xanh của CamScanner) — chạy bằng OpenCV.js + jscanify trên
+// ảnh đã thu nhỏ (nhanh hơn nhiều lần so với xử lý ảnh gốc).
 //
-// Vòng lặp này CHỈ để vẽ viền xanh xem trước. Lúc bấm chụp, app dò lại 4 góc TRÊN CHÍNH TẤM ẢNH
-// VỪA CHỤP chứ không xài lại kết quả của vòng lặp, vì: (1) ảnh chụp thật có kích thước và đôi khi
-// cả góc nhìn khác khung xem trước, toạ độ không quy đổi thẳng được — cắt theo toạ độ cũ là cắt
-// lệch; (2) nếu vòng lặp có trục trặc thì việc tự cắt vẫn chạy bình thường, không phụ thuộc.
+// QUAN TRỌNG — ĐIỂM SỬA để khung xuất ra khớp đúng khung anh thấy lúc đang ngắm: vòng lặp này vừa
+// vẽ viền xanh xem trước, VỪA LƯU LẠI đúng khung đã dò được (lastDetectedQuad) cùng kích thước
+// khung video tại thời điểm đó (lastDetectedVideoSize). Lúc bấm chụp, app DÙNG LẠI CHÍNH khung này
+// (quy đổi tỉ lệ sang đúng kích thước ảnh chụp) thay vì dò lại từ đầu trên ảnh chụp.
+//
+// Lý do: ảnh chụp thật (qua ImageCapture.takePhoto()) và khung xem trước là 2 TẤM ẢNH KHÁC NHAU —
+// khác độ phân giải, và trên nhiều điện thoại còn khác cả phơi sáng/màu sắc vì chế độ "chụp ảnh"
+// xử lý khác chế độ "quay video". Dò lại từ đầu trên ảnh chụp có thể ra 1 khung KHÁC với khung anh
+// đã thấy và ưng ý lúc đang ngắm — đúng hiện tượng "khung xem trước nhỏ gọn vừa khít giấy, nhưng
+// ảnh xuất ra to hơn 30-40%". Dùng lại đúng khung đã thấy đảm bảo "thấy sao chụp vậy": không còn
+// 2 lần dò trên 2 tấm ảnh khác nhau ra 2 kết quả khác nhau.
+//
+// Chỉ khi KHÔNG CÓ khung nào đã dò được lúc bấm chụp (vừa mở camera, giấy chưa kịp vào khung, vừa
+// tắt rồi bật lại "Tự động cắt"...) app mới dò lại trên ảnh chụp làm phương án dự phòng — xem
+// detectQuadOnFullImage bên dưới.
 // ------------------------------------------------------------
 var detectOverlay = document.getElementById('detectOverlay');
 var detectCtx = detectOverlay.getContext('2d');
 var detectTimer = null;
-var lastDetectedQuad = null; // 4 điểm {x,y} theo toạ độ pixel video gốc, thứ tự tl,tr,br,bl
+var lastDetectedQuad = null;      // 4 điểm {x,y} theo toạ độ pixel video gốc, thứ tự tl,tr,br,bl
+var lastDetectedVideoSize = null; // { w, h } của khung video LÚC dò ra lastDetectedQuad — cần để quy đổi đúng tỉ lệ sang ảnh chụp (2 kích thước có thể khác nhau)
 var DETECT_INTERVAL_MS = 350;
 var DETECT_WORK_WIDTH = 420;      // dò cạnh trên ảnh thu nhỏ về bề rộng này cho nhanh
 var DETECT_MIN_AREA_RATIO = 0.15; // khung dò được phải chiếm ít nhất 15% khung hình mới tính (tránh dò trúng vật nhỏ)
@@ -408,7 +419,7 @@ function startDetectLoop() {
   if (detectTimer) clearInterval(detectTimer);
   detectTimer = setInterval(function () {
     if (!document.getElementById('autoDetectToggle').checked) {
-      lastDetectedQuad = null;
+      lastDetectedQuad = null; lastDetectedVideoSize = null;
       detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height);
       return;
     }
@@ -420,13 +431,18 @@ function startDetectLoop() {
     workCanvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     workCanvas.getContext('2d').drawImage(video, 0, 0, workCanvas.width, workCanvas.height);
     var quad = detectQuadOnCanvas(workCanvas);
-    lastDetectedQuad = quad ? quad.map(function (p) { return { x: p.x / scale, y: p.y / scale }; }) : null;
+    if (quad) {
+      lastDetectedQuad = quad.map(function (p) { return { x: p.x / scale, y: p.y / scale }; });
+      lastDetectedVideoSize = { w: video.videoWidth, h: video.videoHeight };
+    } else {
+      lastDetectedQuad = null; lastDetectedVideoSize = null;
+    }
     drawDetectOverlay();
   }, DETECT_INTERVAL_MS);
 }
 
 document.getElementById('autoDetectToggle').addEventListener('change', function () {
-  if (!this.checked) { lastDetectedQuad = null; detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height); }
+  if (!this.checked) { lastDetectedQuad = null; lastDetectedVideoSize = null; detectCtx.clearRect(0, 0, detectOverlay.width, detectOverlay.height); }
 });
 
 // Bấm để tự xem tình trạng thật — không cần mở console lập trình viên, chụp màn hình gửi đi là
@@ -437,7 +453,7 @@ document.getElementById('btnDebugInfo').addEventListener('click', function () {
     '--- ẢNH VỪA CHỤP ---',
     'Lấy ảnh bằng cách: ' + LAST_CAP.method,
     'Độ phân giải: ' + (LAST_CAP.w ? LAST_CAP.w + '×' + LAST_CAP.h + ' (~' + estimateDpi(LAST_CAP.w, LAST_CAP.h) + ' DPI khổ A4)' : '(chưa chụp)'),
-    'Có tự cắt được không: ' + (LAST_CAP.w ? (LAST_CAP.cropped ? 'CÓ' : 'KHÔNG — ' + (LAST_CAP.note || 'không rõ')) : '(chưa chụp)'),
+    'Có tự cắt được không: ' + (LAST_CAP.w ? (LAST_CAP.cropped ? 'CÓ (' + (LAST_CAP.source || '?') + ')' : 'KHÔNG — ' + (LAST_CAP.note || 'không rõ')) : '(chưa chụp)'),
     '--- CAMERA ---',
     'Máy hỗ trợ chụp ảnh tĩnh riêng (ImageCapture): ' + (!!window.ImageCapture) + (imageCapture ? ' — đang dùng' : ' — không dùng được'),
     'Ảnh tĩnh tối đa máy báo: ' + (photoCaps && photoCaps.imageWidth ? photoCaps.imageWidth.max + '×' + (photoCaps.imageHeight ? photoCaps.imageHeight.max : '?') : '(không rõ)'),
@@ -448,6 +464,7 @@ document.getElementById('btnDebugInfo').addEventListener('click', function () {
     'Thư viện jscanify: ' + (scanner ? 'đã tải (v1.4.0, MIT)' : 'LỖI — không tải được, chỉ còn cắt tay'),
     'Nguồn OpenCV: ' + (CV_DEBUG.source || '(chưa bắt đầu tải)'),
     'CV_READY: ' + CV_READY + ' (' + (CV_DEBUG.readyVia || 'chưa có') + ')',
+    'Đang có khung đã dò từ lúc xem trước (dùng lại lúc chụp): ' + (!!lastDetectedQuad),
     'Vòng dò cạnh đang chạy: ' + (!!detectTimer) + ' — đã chạy ' + CV_DEBUG.detectTicks + ' lượt, tự bật lại ' + CV_DEBUG.loopRestarts + ' lần',
     'Lần dò gần nhất: ' + (CV_DEBUG.lastDetectAt || '(chưa chạy lần nào)') + ' — thấy khung giấy: ' + CV_DEBUG.lastDetectFound,
     'Lỗi lần dò gần nhất: ' + (CV_DEBUG.lastDetectError || '(không có)'),
@@ -457,19 +474,8 @@ document.getElementById('btnDebugInfo').addEventListener('click', function () {
 });
 
 // Dò 4 góc tờ giấy trên 1 canvas bất kỳ, bằng chính thư viện jscanify (không tự viết lại thuật
-// toán nữa). Trả về mảng 4 điểm theo toạ độ CHÍNH CANVAS ĐÓ, thứ tự tl,tr,br,bl — hoặc null nếu
-// không tìm được. Dùng chung cho cả vòng xem trước lẫn lúc bấm chụp.
-//
-// VÌ SAO ĐỔI SANG jscanify (MIT, github.com/puffinsoft/jscanify) thay vì tự viết:
-// Cách tự viết trước đây bắt buộc contour phải xấp xỉ ĐÚNG 4 điểm và LỒI (approxPolyDP +
-// isContourConvex) — chỉ cần mép phiếu hơi cong, có bóng, ảnh nhiễu hạt là contour ra 5-6 điểm và
-// THẤT BẠI HOÀN TOÀN, không cắt được (đúng kiểu lỗi "không thấy đủ 4 cạnh" hay gặp, đặc biệt từ
-// tấm thứ 2 trở đi khi góc chụp/ánh sáng đổi chút ít). jscanify.getCornerPoints() không đòi hỏi
-// vậy: lấy hình chữ nhật bao nhỏ nhất (minAreaRect) để có tâm, chia mặt phẳng quanh tâm thành 4
-// góc phần tư, mỗi góc phần tư giữ điểm XA TÂM NHẤT — luôn ra đủ 4 góc dù contour lởm chởm bao
-// nhiêu điểm, miễn đúng là 1 tờ giấy. Thư viện đã có ~1.8k sao, được nhiều dự án dùng, nên tin
-// tưởng thuật toán dò contour (findPaperContour) và cắt phối cảnh (extractPaper, xem warpToCanvasCv
-// bên dưới) của họ hơn là tự dò lỗi trong bản tự viết.
+// toán). Trả về mảng 4 điểm theo toạ độ CHÍNH CANVAS ĐÓ, thứ tự tl,tr,br,bl — hoặc null nếu không
+// tìm được. Dùng chung cho cả vòng xem trước lẫn (khi cần) dò dự phòng trên ảnh chụp.
 function detectQuadOnCanvas(cnv) {
   if (!CV_READY) { CV_DEBUG.lastDetectError = 'OpenCV chưa sẵn sàng'; return null; }
   if (!scanner) { CV_DEBUG.lastDetectError = 'jscanify chưa tải được'; return null; }
@@ -502,8 +508,9 @@ function detectQuadOnCanvas(cnv) {
   return pts;
 }
 
-// Dò 4 góc trên 1 canvas ảnh lớn: thu nhỏ về DETECT_WORK_WIDTH để dò cho nhanh rồi quy đổi toạ độ
-// ngược lại về đúng độ phân giải ảnh gốc (cắt trên ảnh thu nhỏ thì ảnh ra vỡ hạt — lỗi đã gặp).
+// Dò 4 góc trên 1 canvas ảnh lớn — CHỈ dùng làm PHƯƠNG ÁN DỰ PHÒNG khi lúc bấm chụp không có sẵn
+// khung nào đã dò được từ vòng xem trước (xem giải thích ở đầu phần trên). Thu nhỏ về
+// DETECT_WORK_WIDTH để dò cho nhanh rồi quy đổi toạ độ ngược lại về đúng độ phân giải ảnh gốc.
 function detectQuadOnFullImage(bigCanvas) {
   var s = DETECT_WORK_WIDTH / bigCanvas.width;
   if (s >= 1) return detectQuadOnCanvas(bigCanvas);
@@ -635,27 +642,45 @@ btnShutter.addEventListener('click', function () {
   btnShutter.disabled = true;
   flashShutter();
 
+  // Chụp lại ĐÚNG khung đã dò được lúc đang xem trước — chính là cái anh đang nhìn thấy dán mắt
+  // vào màn hình ngay lúc bấm nút. Snapshot NGAY BÂY GIỜ (trước khi lấy ảnh chụp thật, việc này có
+  // thể mất một chút thời gian) để chắc chắn đúng là khung tại thời điểm bấm, không phải khung của
+  // một khoảnh khắc muộn hơn.
+  var liveQuad = lastDetectedQuad;
+  var liveVideoSize = lastDetectedVideoSize;
+
   captureStillCanvas().then(function (res) {
     var srcCanvas = res.canvas;
     var autoOn = document.getElementById('autoDetectToggle').checked;
-    var quad = null, note = '';
+    var quad = null, note = '', source = '';
 
     if (!autoOn) {
       note = 'đang tắt tự động cắt';
-    } else if (!CV_READY) {
-      note = 'công cụ dò cạnh chưa tải xong';
+    } else if (liveQuad && liveVideoSize) {
+      // DÙNG LẠI khung đã thấy lúc xem trước, quy đổi THEO TỈ LỆ (không phải cộng/trừ toạ độ tuyệt
+      // đối) sang đúng kích thước ảnh chụp thật — vì ảnh chụp thật thường khác kích thước khung xem
+      // trước. Đây là điểm sửa để "thấy sao chụp vậy": không dò lại từ đầu trên 1 tấm ảnh khác (có
+      // thể ra kết quả khác) mà dùng đúng khung anh đã thấy và ưng ý.
+      var sx = srcCanvas.width / liveVideoSize.w, sy = srcCanvas.height / liveVideoSize.h;
+      quad = liveQuad.map(function (p) { return { x: p.x * sx, y: p.y * sy }; });
+      source = 'khung đã thấy lúc xem trước';
+    } else if (CV_READY) {
+      // Không có khung nào sẵn (vừa mở camera, giấy chưa kịp vào khung, vừa bật lại "Tự động
+      // cắt"...) — dò dự phòng ngay trên ảnh chụp thật, còn hơn không cắt được tấm nào.
+      quad = detectQuadOnFullImage(srcCanvas);
+      source = 'dò dự phòng trên ảnh chụp';
+      if (!quad) note = 'không thấy đủ 4 cạnh tờ phiếu (dò dự phòng)';
     } else {
-      quad = detectQuadOnFullImage(srcCanvas); // dò NGAY TRÊN TẤM VỪA CHỤP, không xài lại viền xem trước
-      if (!quad) note = 'không thấy đủ 4 cạnh tờ phiếu';
+      note = 'công cụ dò cạnh chưa tải xong';
     }
 
     var outCanvas = quad ? warpToCanvasCv(srcCanvas, quad) : downscaleToCanvas(srcCanvas);
     var dataUrl = outCanvas.toDataURL('image/jpeg', JPEG_QUALITY); // CHỈ nén JPEG đúng 1 lần
     var thumb = makeThumb(outCanvas);
 
-    LAST_CAP = { method: res.method, w: outCanvas.width, h: outCanvas.height, cropped: !!quad, note: note };
+    LAST_CAP = { method: res.method, w: outCanvas.width, h: outCanvas.height, cropped: !!quad, note: note, source: source };
     setCapStatus('<b>' + outCanvas.width + '×' + outCanvas.height + '</b> (~' + estimateDpi(outCanvas.width, outCanvas.height) + ' DPI khổ A4) · ' + res.method +
-      (quad ? ' · đã tự cắt' : ' · <span class="bad">chưa cắt: ' + note + '</span>'));
+      (quad ? ' · đã tự cắt (' + source + ')' : ' · <span class="bad">chưa cắt: ' + note + '</span>'));
     if (autoOn && !quad) showToast('Tấm này chưa tự cắt được (' + note + ') — cắt tay bằng nút ✎ nếu cần.', 2600);
 
     addPhotoToCase({ dataUrl: dataUrl, thumb: thumb, w: outCanvas.width, h: outCanvas.height, cropped: !!quad });
@@ -679,10 +704,10 @@ function outSizeForQuad(quad) {
 }
 
 // CẮT BẰNG jscanify (cv.warpPerspective thật qua scanner.extractPaper) — dùng cho toạ độ do TỰ
-// ĐỘNG dò ra. Phép chiếu (homography) đúng chuẩn, không có vệt gãy dọc đường chéo như cách cắt
-// tay bằng 2 tam giác bên dưới (warpToCanvasManual) — rõ nhất ở những tấm chụp hơi xiên góc.
-// Truyền sẵn cornerPoints cho extractPaper() để nó bỏ qua bước dò lại từ đầu (đỡ tốn máy — xem
-// ghi chú "optimized" ở release v1.4.0 của jscanify).
+// ĐỘNG dò ra (dù là dùng lại khung đã thấy lúc xem trước, hay dò dự phòng trên ảnh chụp). Phép
+// chiếu (homography) đúng chuẩn, không có vệt gãy dọc đường chéo như cách cắt tay bằng 2 tam giác
+// bên dưới (warpToCanvasManual) — rõ nhất ở những tấm chụp hơi xiên góc. Truyền sẵn cornerPoints
+// cho extractPaper() để nó bỏ qua bước dò lại từ đầu (đỡ tốn máy).
 function warpToCanvasCv(srcCanvas, quad) {
   var sz = outSizeForQuad(quad);
   var corners = {
