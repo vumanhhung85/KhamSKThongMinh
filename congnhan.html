@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nhập liệu phiếu công nhân</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --brand:#1a73e8; --brand-dark:#0b57cf; --bg:#f4f6f8; --card:#ffffff;
+    --border:#d8dee5; --warn:#fff4e0; --warn-border:#e8a33d;
+    --ok:#e6f4ea; --ok-border:#34a853; --err:#fce8e6; --err-border:#d93025; --text:#202124; --muted:#5f6368;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0;padding-bottom:70px;}
+  header{background:var(--brand);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{font-size:18px;margin:0;font-weight:600;}
+  header button{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;}
+  main{max-width:1400px;margin:0 auto;padding:16px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
+  .dropzone{border:2px dashed var(--border);border-radius:10px;padding:28px;text-align:center;color:var(--muted);cursor:pointer;}
+  .dropzone.drag{border-color:var(--brand);background:#f0f6ff;}
+  .dropzone input{display:none;}
+  .btn{background:var(--brand);color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;}
+  .btn:hover{background:var(--brand-dark);}
+  .btn:disabled{background:#c4c9ce;cursor:not-allowed;}
+  .btn-sm{padding:4px 10px;font-size:12px;border-radius:5px;}
+  .btn-secondary{background:#fff;color:var(--brand);border:1px solid var(--brand);}
+  .btn-secondary:hover{background:#f0f6ff;}
+  .btn-danger{background:#fff;color:#d93025;border:1px solid #d93025;}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;}
+  .stats{font-size:13px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;}
+  .stats b{color:var(--text);}
+  .progress{height:8px;background:#e8eaed;border-radius:4px;overflow:hidden;margin:8px 0 4px;}
+  .progress > div{height:100%;background:var(--brand);width:0;transition:width .3s;}
+  .table-wrap{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{padding:5px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle;}
+  th{background:#f8f9fa;font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;white-space:nowrap;position:sticky;top:0;z-index:1;}
+  td input,td select{width:100%;padding:5px 6px;border:1px solid transparent;border-radius:4px;font-size:13px;font-family:inherit;background:transparent;}
+  td input:hover,td select:hover{border-color:var(--border);}
+  td input:focus,td select:focus{border-color:var(--brand);background:#fff;outline:none;}
+  td input.bad{background:var(--warn);border-color:var(--warn-border);}
+  tr.row-flag{background:#fffaf0;}
+  tr.row-error{background:var(--err);}
+  tr.row-busy td{color:var(--muted);}
+  .thumb{width:46px;height:60px;object-fit:cover;border:1px solid var(--border);border-radius:4px;cursor:zoom-in;display:block;}
+  .thumb-empty{width:46px;height:60px;border:1px dashed var(--border);border-radius:4px;font-size:9px;color:var(--muted);display:flex;align-items:center;justify-content:center;text-align:center;}
+  .flags{font-size:11px;color:#a5530a;line-height:1.35;min-width:150px;}
+  .flags.ok{color:#1e7e34;}
+  .src{font-size:11px;color:var(--muted);white-space:nowrap;}
+  .settings{display:none;margin-top:12px;gap:12px;grid-template-columns:2fr 1fr 1fr 1fr;}
+  .settings.show{display:grid;}
+  .settings label{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:3px;}
+  .settings input{width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;}
+  @media (max-width:800px){ .settings{grid-template-columns:1fr;} }
+  .viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;display:none;flex-direction:column;}
+  .viewer.show{display:flex;}
+  .viewer-top{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;color:#fff;font-size:14px;gap:10px;}
+  .viewer-top button{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:14px;}
+  .viewer-body{flex:1;overflow:auto;text-align:center;}
+  .viewer-body img{max-width:100%;transform-origin:top center;}
+  .viewer-body img.zoomed{max-width:none;width:180%;}
+  .access-gate{position:fixed;inset:0;background:#f4f6f8;z-index:2000;display:flex;align-items:center;justify-content:center;}
+  .access-gate .box{background:#fff;border:1px solid var(--border);border-radius:10px;padding:24px;width:300px;text-align:center;}
+  .access-gate input{width:100%;padding:9px;border:1px solid var(--border);border-radius:6px;font-size:15px;margin-top:10px;}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#323232;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:300;max-width:90vw;}
+</style>
+</head>
+<body>
+
+<div id="accessGate" class="access-gate" style="display:none;">
+  <div class="box">
+    <div style="font-weight:600;">Nhập mã truy cập</div>
+    <input type="password" id="accessGateInput" placeholder="Mã truy cập" autocomplete="off">
+    <button type="button" class="btn" id="accessGateBtn" style="width:100%;margin-top:10px;">Vào</button>
+    <div id="accessGateError" style="color:#c0392b;font-size:12px;margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
+<header>
+  <h1>Nhập liệu phiếu công nhân (trang 1 Mẫu 03)</h1>
+  <button type="button" id="btnToggleSettings">⚙ Cài đặt</button>
+</header>
+
+<main>
+  <div class="card">
+    <div class="dropzone" id="dropzone">
+      📄 Kéo-thả file PDF nhiều trang (mỗi trang = 1 người), hoặc ảnh JPG/PNG — bấm để chọn
+      <input type="file" id="fileInput" accept="application/pdf,image/*" multiple>
+    </div>
+    <div class="hint">Mỗi trang được tách riêng ngay trong trình duyệt, rồi gửi AI đọc theo từng nhóm nhỏ (mặc định 5 trang/lần) để không bị sót trang hay lệch dòng. Dữ liệu đã đọc tự lưu tạm trong máy — lỡ tắt trang vẫn còn (chỉ mất ảnh xem trước).</div>
+    <div class="settings" id="settingsPanel">
+      <div><label>GAS Web App URL (dùng chung với app OCR)</label><input type="text" id="setGasUrl"></div>
+      <div><label>Model Gemini</label><input type="text" id="setModel"></div>
+      <div><label>Số trang mỗi lần gửi AI</label><input type="number" id="setChunk" min="1" max="10"></div>
+      <div><label>Số lượt gửi song song</label><input type="number" id="setConcurrency" min="1" max="4"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div class="stats" id="stats"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <label style="font-size:13px;display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="filterFlagged"> Chỉ hiện dòng cần xem</label>
+        <button class="btn btn-sm btn-secondary" id="btnRetryErrors">↻ Đọc lại trang lỗi</button>
+        <button class="btn btn-sm btn-danger" id="btnClearAll">Xoá tất cả</button>
+      </div>
+    </div>
+    <div class="progress"><div id="progressBar"></div></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Ảnh</th><th style="min-width:180px;">Họ và tên</th><th style="min-width:72px;">Giới tính</th>
+          <th style="min-width:105px;">Ngày sinh</th><th style="min-width:80px;">Dân tộc</th><th style="min-width:130px;">Số CCCD</th>
+          <th style="min-width:130px;">Nghề nghiệp</th><th style="min-width:170px;">Nơi làm việc (công ty)</th><th>Kiểm tra</th><th></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div id="emptyHint" class="hint" style="text-align:center;padding:20px 0;">Chưa có trang nào — thả file PDF vào khung phía trên để bắt đầu.</div>
+  </div>
+</main>
+
+<div style="position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--border);padding:10px 16px;display:flex;justify-content:flex-end;gap:10px;align-items:center;z-index:50;">
+  <span class="hint" id="exportHint" style="margin:0;"></span>
+  <button class="btn" id="btnExport" disabled>⬇ Xuất Excel</button>
+</div>
+
+<div class="viewer" id="viewer">
+  <div class="viewer-top">
+    <span id="viewerTitle"></span>
+    <div style="display:flex;gap:8px;">
+      <button id="viewerPrev">◀</button><button id="viewerNext">▶</button>
+      <button id="viewerZoom">🔍 Phóng to</button><button id="viewerClose">✕ Đóng</button>
+    </div>
+  </div>
+  <div class="viewer-body"><img id="viewerImg" alt=""></div>
+</div>
+
+<script>
+// ============================================================
+// CẤU HÌNH — dùng CHUNG localStorage với app OCR chính (cùng tên miền) nên GAS URL / model /
+// mã truy cập đã nhập bên đó tự có sẵn ở đây, không cần nhập lại.
+// ============================================================
+var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbz933WWizph7CoTXRFBnf6jYxssnSZwi1smYycfHZ4MXqDWZykT--PitsRCrqPEFEz7Yg/exec';
+var ACCESS_PASSWORD = 'lx';
+var GAS_REQUEST_TIMEOUT_MS = 120000;
+var PAGE_MAX_DIM = 1800;       // ảnh gửi AI: cạnh dài tối đa 1800px — đủ nét để đọc chữ viết tay, nhẹ để gửi nhanh
+var THUMB_MAX_DIM = 240;
+var SNAPSHOT_KEY = 'cn_batch_snapshot_v1';
+
+var CFG = {
+  gasUrl: lsGet('ocr_gas_url') || DEFAULT_GAS_URL,
+  model: lsGet('ocr_gemini_model') || 'gemini-3.1-flash-lite',
+  chunk: parseInt(lsGet('cn_chunk'), 10) || 5,
+  concurrency: parseInt(lsGet('cn_concurrency'), 10) || 2
+};
+
+var PAGES = [];   // mỗi phần tử = 1 trang = 1 người
+var NEXT_ID = 1;
+var running = 0;
+
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function toast(msg, ms) {
+  var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  t.onclick = function () { t.remove(); };
+  document.body.appendChild(t); setTimeout(function () { t.remove(); }, ms || 3000);
+}
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+// ============================================================
+// TÁCH TRANG — PDF -> từng ảnh JPEG; ảnh JPG/PNG -> thu nhỏ về đúng cỡ gửi AI.
+// ============================================================
+function canvasToPageObj(canvas) {
+  var full = canvas.toDataURL('image/jpeg', 0.85);
+  var s = Math.min(1, THUMB_MAX_DIM / Math.max(canvas.width, canvas.height));
+  var tc = document.createElement('canvas');
+  tc.width = Math.round(canvas.width * s); tc.height = Math.round(canvas.height * s);
+  tc.getContext('2d').drawImage(canvas, 0, 0, tc.width, tc.height);
+  return { fullDataUrl: full, base64: full.split(',')[1], thumb: tc.toDataURL('image/jpeg', 0.7) };
+}
+
+function splitPdf(file) {
+  return file.arrayBuffer().then(function (buf) { return pdfjsLib.getDocument({ data: buf }).promise; })
+    .then(function (pdf) {
+      var out = [];
+      var chain = Promise.resolve();
+      for (var i = 1; i <= pdf.numPages; i++) {
+        (function (n) {
+          chain = chain.then(function () {
+            return pdf.getPage(n).then(function (page) {
+              var v1 = page.getViewport({ scale: 1 });
+              var scale = PAGE_MAX_DIM / Math.max(v1.width, v1.height);
+              var vp = page.getViewport({ scale: scale });
+              var canvas = document.createElement('canvas');
+              canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+              return page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise.then(function () {
+                var obj = canvasToPageObj(canvas);
+                obj.source = file.name + ' — trang ' + n;
+                out.push(obj);
+              });
+            });
+          });
+        })(i);
+      }
+      return chain.then(function () { return out; });
+    });
+}
+
+function splitImage(file) {
+  return new Promise(function (resolve, reject) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      var s = Math.min(1, PAGE_MAX_DIM / Math.max(img.width, img.height));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * s); canvas.height = Math.round(img.height * s);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      var obj = canvasToPageObj(canvas);
+      obj.source = file.name;
+      resolve([obj]);
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Không đọc được ảnh ' + file.name)); };
+    img.src = url;
+  });
+}
+
+function handleFiles(fileList) {
+  var files = Array.prototype.slice.call(fileList);
+  if (!files.length) return;
+  toast('Đang tách trang...', 1500);
+  files.reduce(function (p, f) {
+    return p.then(function () {
+      var job = f.type === 'application/pdf' ? splitPdf(f) : (f.type.indexOf('image/') === 0 ? splitImage(f) : Promise.resolve([]));
+      return job.then(function (pages) {
+        pages.forEach(function (pg) {
+          PAGES.push({ id: NEXT_ID++, source: pg.source, base64: pg.base64, fullDataUrl: pg.fullDataUrl, thumb: pg.thumb,
+            status: 'queued', single: false, data: emptyData(), aiUnsure: [], flags: [], errorMsg: '' });
+        });
+        render();
+      }).catch(function (err) { toast('Lỗi tách file ' + f.name + ': ' + err.message, 6000); });
+    });
+  }, Promise.resolve()).then(pump);
+}
+
+function emptyData() { return { ho_ten: '', gioi_tinh: '', ngay_sinh: '', dan_toc: '', cccd: '', nghe_nghiep: '', cong_ty: '' }; }
+
+// ============================================================
+// GỬI AI — theo nhóm nhỏ, song song có giới hạn. Mỗi nhóm trả về đúng N kết quả có "anh_so";
+// nếu AI trả thiếu/thừa/lệch số -> tự tách nhóm đó ra đọc lại TỪNG TRANG một (không đoán ghép).
+// ============================================================
+function buildPrompt(n) {
+  return [
+    'Bạn được gửi ' + n + ' ảnh, theo đúng thứ tự ảnh số 1 đến ảnh số ' + n + '. Mỗi ảnh là TRANG 1 của 1 phiếu "Mẫu 03 - Giấy khám sức khỏe" viết tay của 1 người khác nhau.',
+    'Chỉ đọc phần "THÔNG TIN HÀNH CHÍNH" ở đầu phiếu. Trả về DUY NHẤT 1 JSON object dạng {"phieu":[...]} với ĐÚNG ' + n + ' phần tử, mỗi ảnh 1 phần tử, theo đúng thứ tự ảnh, không gộp, không bỏ ảnh nào.',
+    'Mỗi phần tử gồm:',
+    '- anh_so: số thứ tự ảnh (1..' + n + ')',
+    '- khong_phai_phieu: true nếu ảnh không phải trang 1 của phiếu (trang trắng, trang khác, ảnh hỏng), ngược lại false',
+    '- ho_ten: mục 1, viết IN HOA có dấu tiếng Việt',
+    '- gioi_tinh: mục 2, ô được đánh dấu: "Nam" hoặc "Nữ", để "" nếu không đánh dấu',
+    '- ngay_sinh: mục 3, dạng dd/MM/yyyy (vd "01.8.1998" -> "01/08/1998")',
+    '- dan_toc: mục 4 (vd "Kinh"), để "" nếu bỏ trống',
+    '- cccd: mục 6, CHỈ các chữ số đọc được trong các ô vuông, không thêm bớt, không đoán số theo nơi ở/nơi làm việc',
+    '- nghe_nghiep: mục 9, phần NGHỀ (vd "Công nhân"), bỏ phần tên công ty',
+    '- cong_ty: TÊN CÔNG TY/nơi làm việc, lấy từ mục 9 (thường viết kiểu "Công nhân cty Tiến Quang") và/hoặc mục 10; viết đầy đủ "Công ty ..." thay cho "cty"; KHÔNG ghi địa chỉ đường/phường vào đây; để "" nếu không có',
+    '- khong_chac: mảng tên các trường ở trên mà chữ viết tay khó đọc, bạn không chắc chắn (vd ["cccd","ho_ten"]), mảng rỗng nếu chắc chắn hết',
+    'Nếu mục nào bỏ trống thì để chuỗi rỗng "". Không thêm chữ giải thích, không markdown.'
+  ].join('\n');
+}
+
+function gasRequest(action, body) {
+  var payload = Object.assign({ action: action }, body || {});
+  var controller = new AbortController();
+  var tid = setTimeout(function () { controller.abort(); }, GAS_REQUEST_TIMEOUT_MS);
+  return fetch(CFG.gasUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), signal: controller.signal })
+    .then(function (res) {
+      clearTimeout(tid);
+      return res.text().then(function (text) {
+        try { return JSON.parse(text); }
+        catch (e) { throw new Error('GAS trả về không phải JSON (HTTP ' + res.status + '): ' + text.slice(0, 150)); }
+      });
+    }, function (err) {
+      clearTimeout(tid);
+      if (err && err.name === 'AbortError') throw new Error('Hết thời gian chờ (' + GAS_REQUEST_TIMEOUT_MS / 1000 + 's)');
+      throw new Error('Không gọi được GAS: ' + err.message);
+    });
+}
+
+function nextChunk() {
+  var chunk = [];
+  for (var i = 0; i < PAGES.length; i++) {
+    var p = PAGES[i];
+    if (p.status !== 'queued' || !p.base64) continue;
+    if (p.single) { if (!chunk.length) return [p]; break; }
+    chunk.push(p);
+    if (chunk.length >= CFG.chunk) break;
+  }
+  return chunk;
+}
+
+function pump() {
+  while (running < CFG.concurrency) {
+    var chunk = nextChunk();
+    if (!chunk.length) break;
+    runChunk(chunk);
+  }
+  render();
+}
+
+function runChunk(chunk) {
+  running++;
+  chunk.forEach(function (p) { p.status = 'processing'; p.errorMsg = ''; });
+  render();
+  gasRequest('callGemini', {
+    model: CFG.model,
+    promptText: buildPrompt(chunk.length),
+    pages: chunk.map(function (p) { return { mimeType: 'image/jpeg', base64: p.base64 }; })
+  }).then(function (res) {
+    if (res.status !== 'success') throw new Error(res.message || 'Gemini lỗi không rõ');
+    var txt = String(res.text || '').trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+    var json = JSON.parse(txt);
+    var arr = Array.isArray(json) ? json : (json.phieu || []);
+    var byIdx = {};
+    arr.forEach(function (r) { if (r && r.anh_so != null) byIdx[parseInt(r.anh_so, 10)] = r; });
+    var complete = arr.length === chunk.length && chunk.every(function (_, i) { return byIdx[i + 1]; });
+    if (!complete) {
+      if (chunk.length === 1 && arr.length === 1) { byIdx[1] = arr[0]; complete = true; }
+    }
+    if (!complete) {
+      // AI trả lệch số lượng — KHÔNG ghép đoán, tách ra đọc lại từng trang riêng
+      chunk.forEach(function (p) { p.status = 'queued'; p.single = true; });
+      return;
+    }
+    chunk.forEach(function (p, i) { applyResult(p, byIdx[i + 1]); });
+  }).catch(function (err) {
+    chunk.forEach(function (p) { p.status = 'error'; p.errorMsg = err.message; });
+  }).then(function () {
+    running--;
+    saveSnapshot();
+    pump();
+  });
+}
+
+function applyResult(p, r) {
+  if (r.khong_phai_phieu === true) {
+    p.status = 'skip'; p.data = emptyData(); p.aiUnsure = []; p.flags = ['AI báo: không phải trang 1 của phiếu'];
+    return;
+  }
+  p.data = {
+    ho_ten: r.ho_ten || '', gioi_tinh: r.gioi_tinh || '', ngay_sinh: r.ngay_sinh || '', dan_toc: r.dan_toc || '',
+    cccd: r.cccd || '', nghe_nghiep: r.nghe_nghiep || '', cong_ty: r.cong_ty || ''
+  };
+  p.aiUnsure = Array.isArray(r.khong_chac) ? r.khong_chac : [];
+  normalizeData(p.data);
+  p.status = 'done';
+}
+
+// ============================================================
+// CHUẨN HOÁ + KIỂM TRA — chạy lại mỗi khi anh sửa 1 ô.
+// ============================================================
+function normalizeDate(s) {
+  s = String(s || '').trim();
+  var m = s.match(/^(\d{1,2})\s*[\/.\-\s]\s*(\d{1,2})\s*[\/.\-\s]\s*(\d{2}|\d{4})$/);
+  if (!m) return s;
+  var d = parseInt(m[1], 10), mo = parseInt(m[2], 10), y = parseInt(m[3], 10);
+  if (m[3].length === 2) { var cy = new Date().getFullYear() % 100; y = (y > cy ? 1900 : 2000) + y; }
+  if (d < 1 || d > 31 || mo < 1 || mo > 12) return s;
+  return ('0' + d).slice(-2) + '/' + ('0' + mo).slice(-2) + '/' + y;
+}
+
+function normalizeData(d) {
+  d.ho_ten = String(d.ho_ten || '').replace(/\s+/g, ' ').trim().toUpperCase();
+  var g = String(d.gioi_tinh || '').trim().toLowerCase();
+  d.gioi_tinh = (g === 'nam' || g === '1') ? 'Nam' : ((g === 'nữ' || g === 'nu' || g === '2') ? 'Nữ' : '');
+  d.ngay_sinh = normalizeDate(d.ngay_sinh);
+  d.dan_toc = String(d.dan_toc || '').trim();
+  if (!d.dan_toc) d.dan_toc = 'Kinh';
+  d.dan_toc = d.dan_toc.charAt(0).toUpperCase() + d.dan_toc.slice(1).toLowerCase();
+  d.cccd = String(d.cccd || '').replace(/[\s.\-]/g, '');
+  d.nghe_nghiep = String(d.nghe_nghiep || '').replace(/\s+/g, ' ').trim();
+  d.cong_ty = String(d.cong_ty || '').replace(/\s+/g, ' ').trim().replace(/^(c\.?\s?ty|cty\.?)\s+/i, 'Công ty ');
+}
+
+// field -> lỗi; dùng để tô vàng đúng ô + liệt kê ở cột "Kiểm tra"
+function validate(p, dupSet) {
+  var d = p.data, bad = {}, flags = [];
+  if (p.status !== 'done') return { bad: bad, flags: p.status === 'skip' ? p.flags : [] };
+  if (!d.ho_ten) { bad.ho_ten = 1; flags.push('Thiếu họ tên'); }
+  if (!d.gioi_tinh) { bad.gioi_tinh = 1; flags.push('Thiếu giới tính'); }
+  var dm = d.ngay_sinh.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!dm) { bad.ngay_sinh = 1; flags.push('Ngày sinh sai định dạng'); }
+  else {
+    var age = new Date().getFullYear() - parseInt(dm[3], 10);
+    if (age < 15 || age > 75) { bad.ngay_sinh = 1; flags.push('Tuổi bất thường (' + age + ')'); }
+  }
+  if (!d.cccd) { bad.cccd = 1; flags.push('Thiếu CCCD'); }
+  else if (!/^\d{12}$/.test(d.cccd)) { bad.cccd = 1; flags.push('CCCD không đủ 12 số (' + d.cccd.length + ')'); }
+  else if (dm && d.gioi_tinh) {
+    var y = parseInt(dm[3], 10);
+    var expect4 = (Math.floor(y / 100) - 19) * 2 + (d.gioi_tinh === 'Nữ' ? 1 : 0);
+    if (parseInt(d.cccd.charAt(3), 10) !== expect4) { bad.cccd = 1; bad.gioi_tinh = 1; flags.push('CCCD số thứ 4 lệch giới tính/năm sinh'); }
+    if (d.cccd.substr(4, 2) !== ('0' + (y % 100)).slice(-2)) { bad.cccd = 1; bad.ngay_sinh = 1; flags.push('CCCD số 5-6 lệch năm sinh'); }
+  }
+  if (d.cccd && dupSet[d.cccd] > 1) { bad.cccd = 1; flags.push('Trùng CCCD với dòng khác'); }
+  p.aiUnsure.forEach(function (f) { if (d.hasOwnProperty(f)) { bad[f] = 1; } });
+  if (p.aiUnsure.length) flags.push('AI không chắc: ' + p.aiUnsure.join(', '));
+  return { bad: bad, flags: flags };
+}
+
+function dupCounts() {
+  var c = {};
+  PAGES.forEach(function (p) { if (p.status === 'done' && p.data.cccd) c[p.data.cccd] = (c[p.data.cccd] || 0) + 1; });
+  return c;
+}
+
+// ============================================================
+// HIỂN THỊ
+// ============================================================
+var FIELD_ORDER = ['ho_ten', 'gioi_tinh', 'ngay_sinh', 'dan_toc', 'cccd', 'nghe_nghiep', 'cong_ty'];
+
+function render() {
+  var tbody = document.getElementById('tbody');
+  var onlyFlag = document.getElementById('filterFlagged').checked;
+  var dups = dupCounts();
+  var counts = { total: PAGES.length, done: 0, flag: 0, err: 0, wait: 0, skip: 0 };
+  var html = '';
+  PAGES.forEach(function (p, idx) {
+    var v = validate(p, dups);
+    p.flags = v.flags;
+    if (p.status === 'done') { counts.done++; if (v.flags.length) counts.flag++; }
+    else if (p.status === 'error') counts.err++;
+    else if (p.status === 'skip') counts.skip++;
+    else counts.wait++;
+    var flagged = v.flags.length > 0 || p.status === 'error' || p.status === 'skip';
+    if (onlyFlag && !flagged) return;
+    var cls = p.status === 'error' ? 'row-error' : (p.status === 'done' || p.status === 'skip' ? (flagged ? 'row-flag' : '') : 'row-busy');
+    html += '<tr class="' + cls + '" data-id="' + p.id + '">';
+    html += '<td>' + (idx + 1) + '<div class="src">' + esc(p.source) + '</div></td>';
+    html += '<td>' + (p.thumb ? '<img class="thumb" src="' + p.thumb + '" data-view="' + p.id + '">' : '<div class="thumb-empty">mất ảnh<br>(khôi phục)</div>') + '</td>';
+    if (p.status === 'queued' || p.status === 'processing') {
+      html += '<td colspan="7" style="color:var(--muted);">' + (p.status === 'processing' ? '⏳ AI đang đọc...' : '… đang chờ lượt') + '</td><td></td><td></td>';
+    } else if (p.status === 'error') {
+      html += '<td colspan="7" style="color:#a50e0e;font-size:12px;">Lỗi: ' + esc(p.errorMsg) + '</td><td></td><td><button class="btn btn-sm btn-secondary" data-retry="' + p.id + '">↻</button></td>';
+    } else {
+      FIELD_ORDER.forEach(function (f) {
+        var b = v.bad[f] ? ' bad' : '';
+        if (f === 'gioi_tinh') {
+          html += '<td><select data-f="' + f + '" class="' + b + '">' + ['', 'Nam', 'Nữ'].map(function (o) { return '<option' + (p.data[f] === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select></td>';
+        } else {
+          html += '<td><input data-f="' + f + '" class="' + b + '" value="' + esc(p.data[f]) + '"></td>';
+        }
+      });
+      html += '<td class="flags' + (v.flags.length ? '' : ' ok') + '">' + (v.flags.length ? esc(v.flags.join(' · ')) : '✓ Ổn') + '</td>';
+      html += '<td><button class="btn btn-sm btn-secondary" data-retry="' + p.id + '" title="Đọc lại trang này">↻</button></td>';
+    }
+    html += '</tr>';
+  });
+  tbody.innerHTML = html;
+  document.getElementById('emptyHint').style.display = PAGES.length ? 'none' : 'block';
+
+  var finished = counts.done + counts.err + counts.skip;
+  document.getElementById('progressBar').style.width = (PAGES.length ? Math.round(finished / PAGES.length * 100) : 0) + '%';
+  document.getElementById('stats').innerHTML =
+    'Tổng <b>' + counts.total + '</b> trang · Đã đọc <b>' + counts.done + '</b> · Cần xem <b style="color:#a5530a;">' + counts.flag + '</b>' +
+    (counts.skip ? ' · Không phải phiếu <b>' + counts.skip + '</b>' : '') +
+    (counts.err ? ' · Lỗi <b style="color:#d93025;">' + counts.err + '</b>' : '') +
+    (counts.wait ? ' · Đang chờ/đọc <b>' + counts.wait + '</b>' : '');
+  var btn = document.getElementById('btnExport');
+  btn.disabled = counts.done === 0;
+  document.getElementById('exportHint').textContent = counts.wait ? 'Đang đọc — có thể xuất phần đã xong bất cứ lúc nào.' : (counts.flag ? counts.flag + ' dòng còn cờ cảnh báo (vẫn xuất được).' : '');
+}
+
+document.getElementById('tbody').addEventListener('change', function (e) {
+  var el = e.target, f = el.getAttribute('data-f');
+  if (!f) return;
+  var id = parseInt(el.closest('tr').getAttribute('data-id'), 10);
+  var p = PAGES.find(function (x) { return x.id === id; });
+  if (!p) return;
+  p.data[f] = el.value;
+  p.aiUnsure = p.aiUnsure.filter(function (x) { return x !== f; }); // anh đã tự xem/sửa ô này -> bỏ cờ "AI không chắc"
+  normalizeData(p.data);
+  saveSnapshot();
+  render();
+});
+
+document.getElementById('tbody').addEventListener('click', function (e) {
+  var r = e.target.getAttribute('data-retry');
+  if (r) {
+    var p = PAGES.find(function (x) { return x.id === parseInt(r, 10); });
+    if (!p) return;
+    if (!p.base64) { toast('Trang này đã mất ảnh (khôi phục từ bản lưu tạm) — thả lại file PDF gốc nếu cần đọc lại.', 5000); return; }
+    p.status = 'queued'; p.single = true; pump(); return;
+  }
+  var v = e.target.getAttribute('data-view');
+  if (v) openViewer(parseInt(v, 10));
+});
+
+// ============================================================
+// XEM ẢNH GỐC
+// ============================================================
+var viewerId = null;
+function openViewer(id) {
+  var p = PAGES.find(function (x) { return x.id === id; });
+  if (!p || !p.fullDataUrl) return;
+  viewerId = id;
+  var img = document.getElementById('viewerImg');
+  img.src = p.fullDataUrl; img.classList.remove('zoomed');
+  document.getElementById('viewerTitle').textContent = p.source + (p.data.ho_ten ? ' — ' + p.data.ho_ten : '');
+  document.getElementById('viewer').classList.add('show');
+}
+function stepViewer(dir) {
+  var withImg = PAGES.filter(function (p) { return p.fullDataUrl; });
+  var i = withImg.findIndex(function (p) { return p.id === viewerId; });
+  var n = withImg[i + dir];
+  if (n) openViewer(n.id);
+}
+document.getElementById('viewerClose').onclick = function () { document.getElementById('viewer').classList.remove('show'); };
+document.getElementById('viewerZoom').onclick = function () { document.getElementById('viewerImg').classList.toggle('zoomed'); };
+document.getElementById('viewerPrev').onclick = function () { stepViewer(-1); };
+document.getElementById('viewerNext').onclick = function () { stepViewer(1); };
+document.addEventListener('keydown', function (e) {
+  if (!document.getElementById('viewer').classList.contains('show')) return;
+  if (e.key === 'Escape') document.getElementById('viewerClose').click();
+  if (e.key === 'ArrowLeft') stepViewer(-1);
+  if (e.key === 'ArrowRight') stepViewer(1);
+});
+
+// ============================================================
+// XUẤT EXCEL — cột cố định; CCCD & ngày sinh ghi dạng CHỮ để Excel không làm mất số 0 đầu
+// hoặc tự đổi ngày sang kiểu khác.
+// ============================================================
+var EXPORT_HEADERS = ['STT', 'Họ và tên', 'Giới tính', 'Ngày sinh', 'Dân tộc', 'Số CCCD', 'Nghề nghiệp', 'Nơi làm việc', 'Ghi chú kiểm tra', 'Nguồn (file - trang)'];
+
+document.getElementById('btnExport').addEventListener('click', function () {
+  var dups = dupCounts();
+  var rows = [EXPORT_HEADERS];
+  var stt = 0;
+  PAGES.forEach(function (p) {
+    if (p.status !== 'done') return;
+    var v = validate(p, dups);
+    var d = p.data;
+    rows.push([++stt, d.ho_ten, d.gioi_tinh, d.ngay_sinh, d.dan_toc, d.cccd, d.nghe_nghiep, d.cong_ty, v.flags.join('; '), p.source]);
+  });
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  // ép cột Ngày sinh (D) và CCCD (F) thành kiểu chữ
+  for (var r = 1; r < rows.length; r++) {
+    ['D', 'F'].forEach(function (col) {
+      var cell = ws[col + (r + 1)];
+      if (cell) { cell.t = 's'; cell.v = String(cell.v); cell.z = '@'; }
+    });
+  }
+  ws['!cols'] = [{ wch: 5 }, { wch: 26 }, { wch: 8 }, { wch: 12 }, { wch: 9 }, { wch: 15 }, { wch: 16 }, { wch: 30 }, { wch: 40 }, { wch: 30 }];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'CongNhan');
+  var t = new Date(), pad = function (n) { return ('0' + n).slice(-2); };
+  XLSX.writeFile(wb, 'CongNhan_' + t.getFullYear() + pad(t.getMonth() + 1) + pad(t.getDate()) + '_' + pad(t.getHours()) + pad(t.getMinutes()) + '.xlsx');
+});
+
+// ============================================================
+// LƯU TẠM — chỉ lưu dữ liệu chữ (không lưu ảnh, quá nặng cho localStorage)
+// ============================================================
+function saveSnapshot() {
+  var lite = PAGES.filter(function (p) { return p.status === 'done' || p.status === 'skip' || p.status === 'error'; })
+    .map(function (p) { return { id: p.id, source: p.source, status: p.status, data: p.data, aiUnsure: p.aiUnsure, errorMsg: p.errorMsg }; });
+  if (!lite.length) { try { localStorage.removeItem(SNAPSHOT_KEY); } catch (e) {} return; }
+  lsSet(SNAPSHOT_KEY, JSON.stringify({ savedAt: Date.now(), nextId: NEXT_ID, pages: lite }));
+}
+
+function restoreSnapshot() {
+  var raw = lsGet(SNAPSHOT_KEY);
+  if (!raw) return;
+  var snap; try { snap = JSON.parse(raw); } catch (e) { return; }
+  if (!snap || !snap.pages || !snap.pages.length) return;
+  var when = snap.savedAt ? new Date(snap.savedAt).toLocaleString('vi-VN') : '';
+  if (confirm('Có ' + snap.pages.length + ' trang đã đọc từ phiên trước (' + when + ') chưa xuất. Khôi phục để làm tiếp?\n\n(Ảnh xem trước sẽ trống — dữ liệu đã đọc vẫn còn nguyên.)\nBấm Hủy để bỏ bản lưu này.')) {
+    PAGES = snap.pages.map(function (p) {
+      p.base64 = null; p.fullDataUrl = null; p.thumb = null; p.single = true; p.flags = [];
+      if (!p.data) p.data = emptyData();
+      if (!p.aiUnsure) p.aiUnsure = [];
+      return p;
+    });
+    NEXT_ID = Math.max(snap.nextId || 1, PAGES.reduce(function (m, p) { return Math.max(m, p.id); }, 0) + 1);
+  } else {
+    try { localStorage.removeItem(SNAPSHOT_KEY); } catch (e) {}
+  }
+}
+
+// ============================================================
+// KHỞI ĐỘNG
+// ============================================================
+function initSettings() {
+  var g = document.getElementById('setGasUrl'), m = document.getElementById('setModel');
+  var c = document.getElementById('setChunk'), k = document.getElementById('setConcurrency');
+  g.value = CFG.gasUrl; m.value = CFG.model; c.value = CFG.chunk; k.value = CFG.concurrency;
+  g.onchange = function () { CFG.gasUrl = g.value.trim(); lsSet('ocr_gas_url', CFG.gasUrl); };
+  m.onchange = function () { CFG.model = m.value.trim(); lsSet('ocr_gemini_model', CFG.model); };
+  c.onchange = function () { CFG.chunk = Math.max(1, Math.min(10, parseInt(c.value, 10) || 5)); c.value = CFG.chunk; lsSet('cn_chunk', CFG.chunk); };
+  k.onchange = function () { CFG.concurrency = Math.max(1, Math.min(4, parseInt(k.value, 10) || 2)); k.value = CFG.concurrency; lsSet('cn_concurrency', CFG.concurrency); };
+  document.getElementById('btnToggleSettings').onclick = function () { document.getElementById('settingsPanel').classList.toggle('show'); };
+}
+
+function initDrop() {
+  var dz = document.getElementById('dropzone'), fi = document.getElementById('fileInput');
+  dz.onclick = function () { fi.click(); };
+  fi.onchange = function () { handleFiles(fi.files); fi.value = ''; };
+  dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.classList.add('drag'); });
+  dz.addEventListener('dragleave', function () { dz.classList.remove('drag'); });
+  dz.addEventListener('drop', function (e) { e.preventDefault(); dz.classList.remove('drag'); handleFiles(e.dataTransfer.files); });
+}
+
+function initButtons() {
+  document.getElementById('filterFlagged').onchange = render;
+  document.getElementById('btnRetryErrors').onclick = function () {
+    var n = 0;
+    PAGES.forEach(function (p) { if (p.status === 'error' && p.base64) { p.status = 'queued'; n++; } });
+    if (!n) { toast('Không có trang lỗi nào đọc lại được.'); return; }
+    pump();
+  };
+  document.getElementById('btnClearAll').onclick = function () {
+    if (!PAGES.length) return;
+    if (running) { toast('Đang đọc dở — đợi xong rồi hãy xoá.'); return; }
+    if (!confirm('Xoá toàn bộ ' + PAGES.length + ' trang (cả bản lưu tạm)? Nhớ xuất Excel trước nếu cần.')) return;
+    PAGES = []; saveSnapshot(); render();
+  };
+  window.addEventListener('beforeunload', function (e) {
+    if (running || PAGES.some(function (p) { return p.status === 'queued'; })) { e.preventDefault(); e.returnValue = ''; }
+  });
+}
+
+function initAccessGate(onOk) {
+  if (lsGet('ocr_access_ok') === '1') { onOk(); return; }
+  var gate = document.getElementById('accessGate'), inp = document.getElementById('accessGateInput');
+  gate.style.display = 'flex'; inp.focus();
+  var tryIt = function () {
+    if (inp.value.trim().toLowerCase() === ACCESS_PASSWORD) { lsSet('ocr_access_ok', '1'); gate.style.display = 'none'; onOk(); }
+    else document.getElementById('accessGateError').textContent = 'Sai mã truy cập.';
+  };
+  document.getElementById('accessGateBtn').onclick = tryIt;
+  inp.onkeydown = function (e) { if (e.key === 'Enter') tryIt(); };
+}
+
+initAccessGate(function () {
+  initSettings(); initDrop(); initButtons();
+  restoreSnapshot();
+  render();
+});
+</script>
+</body>
+</html>
