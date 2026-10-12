@@ -29,11 +29,17 @@
   .btn-secondary{background:#fff;color:var(--brand);border:1px solid var(--brand);}
   .btn-secondary:hover{background:#f0f6ff;}
   .btn-danger{background:#fff;color:#d93025;border:1px solid #d93025;}
+  .btn-del{background:#fff;color:#d93025;border:1px solid #f0b4b4;}
+  .btn-del:hover{background:#fce8e6;}
+  .row-actions{display:flex;gap:4px;white-space:nowrap;}
   .toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;}
   .stats{font-size:13px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;}
   .stats b{color:var(--text);}
   .progress{height:8px;background:#e8eaed;border-radius:4px;overflow:hidden;margin:8px 0 4px;}
   .progress > div{height:100%;background:var(--brand);width:0;transition:width .3s;}
+  .banner{display:none;background:#fce8e6;border:1px solid #d93025;color:#a50e0e;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;line-height:1.5;}
+  .banner.show{display:block;}
+  .banner.info{background:#fff4e0;border-color:#e8a33d;color:#7a4b06;}
   .table-wrap{overflow-x:auto;}
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th,td{padding:5px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle;}
@@ -41,7 +47,7 @@
   td input,td select{width:100%;padding:5px 6px;border:1px solid transparent;border-radius:4px;font-size:13px;font-family:inherit;background:transparent;}
   td input:hover,td select:hover{border-color:var(--border);}
   td input:focus,td select:focus{border-color:var(--brand);background:#fff;outline:none;}
-  td input.bad{background:var(--warn);border-color:var(--warn-border);}
+  td input.bad,td select.bad{background:var(--warn);border-color:var(--warn-border);}
   tr.row-flag{background:#fffaf0;}
   tr.row-error{background:var(--err);}
   tr.row-busy td{color:var(--muted);}
@@ -67,6 +73,7 @@
   .access-gate input{width:100%;padding:9px;border:1px solid var(--border);border-radius:6px;font-size:15px;margin-top:10px;}
   .hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#323232;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:300;max-width:90vw;}
+  .toast button{margin-left:12px;background:none;border:1px solid #8ab4f8;color:#8ab4f8;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px;}
 </style>
 </head>
 <body>
@@ -91,12 +98,13 @@
       📄 Kéo-thả file PDF nhiều trang (mỗi trang = 1 người), hoặc ảnh JPG/PNG — bấm để chọn
       <input type="file" id="fileInput" accept="application/pdf,image/*" multiple>
     </div>
-    <div class="hint">Mỗi trang được tách riêng ngay trong trình duyệt, rồi gửi AI đọc theo từng nhóm nhỏ (mặc định 5 trang/lần) để không bị sót trang hay lệch dòng. Dữ liệu đã đọc tự lưu tạm trong máy — lỡ tắt trang vẫn còn (chỉ mất ảnh xem trước).</div>
+    <div class="hint">Mỗi trang được tách riêng ngay trong trình duyệt, rồi gửi AI đọc theo từng nhóm nhỏ (mặc định 5 trang/lần) để không bị sót trang hay lệch dòng. Lỗi tạm thời (mạng, quá tải) tự thử lại; hết tiền/chạm trần chi tiêu thì tự tạm dừng, nạp xong bấm "Tiếp tục". Dữ liệu đã đọc tự lưu tạm trong máy — lỡ tắt trang vẫn còn (chỉ mất ảnh xem trước).</div>
     <div class="settings" id="settingsPanel">
       <div><label>GAS Web App URL (dùng chung với app OCR)</label><input type="text" id="setGasUrl"></div>
       <div><label>Model Gemini</label><input type="text" id="setModel"></div>
       <div><label>Số trang mỗi lần gửi AI</label><input type="number" id="setChunk" min="1" max="10"></div>
       <div><label>Số lượt gửi song song</label><input type="number" id="setConcurrency" min="1" max="4"></div>
+      <div style="grid-column:1/-1;"><label style="display:flex;align-items:center;gap:6px;font-weight:600;cursor:pointer;"><input type="checkbox" id="setReread" style="width:auto;"> Tự đọc lại CCCD khi nghi sai (chỉ gửi lại đúng trang có CCCD không qua kiểm tra, kèm ảnh phóng to — tốn thêm ít quota)</label></div>
     </div>
   </div>
 
@@ -105,10 +113,12 @@
       <div class="stats" id="stats"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <label style="font-size:13px;display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="filterFlagged"> Chỉ hiện dòng cần xem</label>
+        <button class="btn btn-sm btn-secondary" id="btnPause">⏸ Tạm dừng</button>
         <button class="btn btn-sm btn-secondary" id="btnRetryErrors">↻ Đọc lại trang lỗi</button>
         <button class="btn btn-sm btn-danger" id="btnClearAll">Xoá tất cả</button>
       </div>
     </div>
+    <div class="banner" id="pauseBanner"></div>
     <div class="progress"><div id="progressBar"></div></div>
     <div class="table-wrap">
       <table>
@@ -152,30 +162,64 @@ var PAGE_MAX_DIM = 1800;       // ảnh gửi AI: cạnh dài tối đa 1800px �
 var THUMB_MAX_DIM = 240;
 var SNAPSHOT_KEY = 'cn_batch_snapshot_v1';
 
+// Lỗi TẠM THỜI (quá tải, mạng chập chờn, hết giờ chờ, AI trả JSON hỏng...) -> tự thử lại sau 1
+// lúc, mỗi trang tối đa MAX_ATTEMPTS lần, chờ lâu dần. Lô nhiều trang lỗi lần đầu được tách ra
+// đọc lẻ từng trang (1 trang khó đọc không kéo cả lô chết theo).
+var MAX_ATTEMPTS = 5;
+var RETRY_DELAYS_MS = [5000, 15000, 40000, 90000];
+
 var CFG = {
   gasUrl: lsGet('ocr_gas_url') || DEFAULT_GAS_URL,
   model: lsGet('ocr_gemini_model') || 'gemini-3.1-flash-lite',
   chunk: parseInt(lsGet('cn_chunk'), 10) || 5,
-  concurrency: parseInt(lsGet('cn_concurrency'), 10) || 2
+  concurrency: parseInt(lsGet('cn_concurrency'), 10) || 2,
+  reread: lsGet('cn_reread') !== '0' // mặc định BẬT
 };
+var AGE_MIN = 18, AGE_MAX = 60; // phiếu công nhân Mẫu 03 — ngoài khoảng này chỉ cảnh báo, vẫn cho xuất
 
-var PAGES = [];   // mỗi phần tử = 1 trang = 1 người
+// Mã tỉnh (3 số đầu CCCD) hợp lệ — mã nơi đăng ký khai sinh theo 63 tỉnh/thành cũ. Sau sáp nhập
+// tỉnh 2025 CCCD đã cấp vẫn giữ nguyên mã cũ nên vẫn dùng danh sách này.
+var PROVINCE_CODES = ('001 002 004 006 008 010 011 012 014 015 017 019 020 022 024 025 026 027 030 031 033 034 035 036 037 038 ' +
+  '040 042 044 045 046 048 049 051 052 054 056 058 060 062 064 066 067 068 070 072 074 075 077 079 080 082 083 084 086 087 ' +
+  '089 091 092 093 094 095 096').split(' ').reduce(function (o, c) { o[c] = 1; return o; }, {});
+
+var PAGES = [];          // mỗi phần tử = 1 trang = 1 người
 var NEXT_ID = 1;
-var running = 0;
+var running = 0;         // số lô đang chờ GAS trả lời
+var splitting = 0;       // số file đang tách trang
+var PAUSED = false;      // true = không gửi lô mới (tự bật khi hết tiền/chạm trần, hoặc anh bấm Tạm dừng)
+var PAUSE_REASON = '';
+var wakeTimer = null;
 
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-function toast(msg, ms) {
-  var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+function toast(msg, ms, actionLabel, onAction) {
+  var t = document.createElement('div'); t.className = 'toast';
+  t.appendChild(document.createTextNode(msg));
+  if (actionLabel) {
+    var b = document.createElement('button'); b.textContent = actionLabel;
+    b.onclick = function (e) { e.stopPropagation(); t.remove(); onAction(); };
+    t.appendChild(b);
+  }
   t.onclick = function () { t.remove(); };
   document.body.appendChild(t); setTimeout(function () { t.remove(); }, ms || 3000);
 }
+function findPage(id) { for (var i = 0; i < PAGES.length; i++) if (PAGES[i].id === id) return PAGES[i]; return null; }
+function newPage(source, base64, thumb) {
+  return { id: NEXT_ID++, source: source, base64: base64, thumb: thumb, status: base64 ? 'queued' : 'error',
+    single: false, attempts: 0, retryAt: 0, mode: null, note: '', cccdReread: false, data: emptyData(), aiUnsure: [], flags: [], errorMsg: base64 ? '' : 'Không tách được trang này từ file' };
+}
+function emptyData() { return { ho_ten: '', gioi_tinh: '', ngay_sinh: '', dan_toc: '', cccd: '', nghe_nghiep: '', cong_ty: '' }; }
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+if (typeof pdfjsLib !== 'undefined') pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
 // ============================================================
 // TÁCH TRANG — PDF -> từng ảnh JPEG; ảnh JPG/PNG -> thu nhỏ về đúng cỡ gửi AI.
+// Tách xong trang nào là đưa vào hàng đợi gửi AI LUÔN (không chờ tách hết 100 trang), và 1 trang
+// hỏng chỉ làm hỏng đúng trang đó, không làm hỏng cả file.
+// Chỉ giữ 1 bản ảnh (base64) + ảnh nhỏ cho mỗi trang; xem ảnh gốc thì ghép lại tại chỗ — tránh
+// tốn gấp đôi bộ nhớ với file 100 trang.
 // ============================================================
 function canvasToPageObj(canvas) {
   var full = canvas.toDataURL('image/jpeg', 0.85);
@@ -183,38 +227,43 @@ function canvasToPageObj(canvas) {
   var tc = document.createElement('canvas');
   tc.width = Math.round(canvas.width * s); tc.height = Math.round(canvas.height * s);
   tc.getContext('2d').drawImage(canvas, 0, 0, tc.width, tc.height);
-  return { fullDataUrl: full, base64: full.split(',')[1], thumb: tc.toDataURL('image/jpeg', 0.7) };
+  var thumb = tc.toDataURL('image/jpeg', 0.7);
+  canvas.width = canvas.height = 0; tc.width = tc.height = 0; // giải phóng bộ nhớ canvas ngay
+  return { base64: full.split(',')[1], thumb: thumb };
 }
 
-function splitPdf(file) {
+function splitPdf(file, onPage) {
+  if (typeof pdfjsLib === 'undefined') return Promise.reject(new Error('Chưa tải được thư viện đọc PDF — kiểm tra mạng rồi tải lại trang.'));
   return file.arrayBuffer().then(function (buf) { return pdfjsLib.getDocument({ data: buf }).promise; })
     .then(function (pdf) {
-      var out = [];
       var chain = Promise.resolve();
       for (var i = 1; i <= pdf.numPages; i++) {
         (function (n) {
+          var label = file.name + ' — trang ' + n;
           chain = chain.then(function () {
             return pdf.getPage(n).then(function (page) {
               var v1 = page.getViewport({ scale: 1 });
-              var scale = PAGE_MAX_DIM / Math.max(v1.width, v1.height);
-              var vp = page.getViewport({ scale: scale });
+              var vp = page.getViewport({ scale: PAGE_MAX_DIM / Math.max(v1.width, v1.height) });
               var canvas = document.createElement('canvas');
               canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
               return page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise.then(function () {
                 var obj = canvasToPageObj(canvas);
-                obj.source = file.name + ' — trang ' + n;
-                out.push(obj);
+                page.cleanup();
+                onPage(label, obj);
               });
+            }).catch(function (err) {
+              console.warn('Lỗi tách', label, err);
+              onPage(label, null);
             });
           });
         })(i);
       }
-      return chain.then(function () { return out; });
+      return chain.then(function () { pdf.destroy(); });
     });
 }
 
-function splitImage(file) {
-  return new Promise(function (resolve, reject) {
+function splitImage(file, onPage) {
+  return new Promise(function (resolve) {
     var url = URL.createObjectURL(file);
     var img = new Image();
     img.onload = function () {
@@ -223,34 +272,30 @@ function splitImage(file) {
       canvas.width = Math.round(img.width * s); canvas.height = Math.round(img.height * s);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
-      var obj = canvasToPageObj(canvas);
-      obj.source = file.name;
-      resolve([obj]);
+      onPage(file.name, canvasToPageObj(canvas));
+      resolve();
     };
-    img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Không đọc được ảnh ' + file.name)); };
+    img.onerror = function () { URL.revokeObjectURL(url); onPage(file.name, null); resolve(); };
     img.src = url;
   });
 }
 
 function handleFiles(fileList) {
-  var files = Array.prototype.slice.call(fileList);
-  if (!files.length) return;
-  toast('Đang tách trang...', 1500);
+  var files = Array.prototype.slice.call(fileList).filter(function (f) { return f.type === 'application/pdf' || f.type.indexOf('image/') === 0; });
+  if (!files.length) { toast('Chỉ nhận file PDF hoặc ảnh.'); return; }
+  splitting++;
+  render();
+  var onPage = function (label, obj) {
+    PAGES.push(newPage(label, obj && obj.base64, obj && obj.thumb));
+    pump(); // gửi AI ngay khi có đủ trang, không chờ tách hết
+  };
   files.reduce(function (p, f) {
     return p.then(function () {
-      var job = f.type === 'application/pdf' ? splitPdf(f) : (f.type.indexOf('image/') === 0 ? splitImage(f) : Promise.resolve([]));
-      return job.then(function (pages) {
-        pages.forEach(function (pg) {
-          PAGES.push({ id: NEXT_ID++, source: pg.source, base64: pg.base64, fullDataUrl: pg.fullDataUrl, thumb: pg.thumb,
-            status: 'queued', single: false, data: emptyData(), aiUnsure: [], flags: [], errorMsg: '' });
-        });
-        render();
-      }).catch(function (err) { toast('Lỗi tách file ' + f.name + ': ' + err.message, 6000); });
+      return (f.type === 'application/pdf' ? splitPdf(f, onPage) : splitImage(f, onPage))
+        .catch(function (err) { toast('Lỗi mở file ' + f.name + ': ' + err.message, 6000); });
     });
-  }, Promise.resolve()).then(pump);
+  }, Promise.resolve()).then(function () { splitting--; pump(); });
 }
-
-function emptyData() { return { ho_ten: '', gioi_tinh: '', ngay_sinh: '', dan_toc: '', cccd: '', nghe_nghiep: '', cong_ty: '' }; }
 
 // ============================================================
 // GỬI AI — theo nhóm nhỏ, song song có giới hạn. Mỗi nhóm trả về đúng N kết quả có "anh_so";
@@ -267,7 +312,9 @@ function buildPrompt(n) {
     '- gioi_tinh: mục 2, ô được đánh dấu: "Nam" hoặc "Nữ", để "" nếu không đánh dấu',
     '- ngay_sinh: mục 3, dạng dd/MM/yyyy (vd "01.8.1998" -> "01/08/1998")',
     '- dan_toc: mục 4 (vd "Kinh"), để "" nếu bỏ trống',
-    '- cccd: mục 6, CHỈ các chữ số đọc được trong các ô vuông, không thêm bớt, không đoán số theo nơi ở/nơi làm việc',
+    '- cccd_tung_o: mục 6 (Số CCCD) — mảng ĐÚNG 12 phần tử, mỗi phần tử là 1 chữ số đọc trong ĐÚNG 1 ô vuông, theo thứ tự từ trái sang phải (vd ["0","5","2","1","9","8","0","0","1","6","1","5"]). Đọc chậm, từng ô một. Ô nào không đọc được thì ghi "?". Không thêm bớt ô, không đoán số theo nơi ở/nơi làm việc.',
+    '  Lưu ý chữ số viết tay hay nhầm: 1↔7, 0↔6, 3↔8, 5↔6, 4↔9, 2↔7 — nhìn kỹ nét móc/nét gạch ngang của từng số.',
+    '  Tự kiểm tra sau khi đọc: số thứ 4 cho biết giới tính + thế kỷ sinh (0 = Nam sinh 19xx, 1 = Nữ sinh 19xx, 2 = Nam sinh 20xx, 3 = Nữ sinh 20xx); số thứ 5-6 là 2 số cuối năm sinh; 3 số đầu là mã tỉnh (luôn bắt đầu bằng 0). Đối chiếu với mục 2 và mục 3 bạn vừa đọc. Nếu KHÔNG khớp, nhìn lại thật kỹ đúng các ô đó trên ảnh. TUYỆT ĐỐI KHÔNG sửa số chỉ để cho khớp — nếu nét chữ thực tế vẫn như vậy thì ghi đúng nét chữ và đưa "cccd" vào khong_chac.',
     '- nghe_nghiep: mục 9, phần NGHỀ (vd "Công nhân"), bỏ phần tên công ty',
     '- cong_ty: TÊN CÔNG TY/nơi làm việc, lấy từ mục 9 (thường viết kiểu "Công nhân cty Tiến Quang") và/hoặc mục 10; viết đầy đủ "Công ty ..." thay cho "cty"; KHÔNG ghi địa chỉ đường/phường vào đây; để "" nếu không có',
     '- khong_chac: mảng tên các trường ở trên mà chữ viết tay khó đọc, bạn không chắc chắn (vd ["cccd","ho_ten"]), mảng rỗng nếu chắc chắn hết',
@@ -289,19 +336,36 @@ function gasRequest(action, body) {
     }, function (err) {
       clearTimeout(tid);
       if (err && err.name === 'AbortError') throw new Error('Hết thời gian chờ (' + GAS_REQUEST_TIMEOUT_MS / 1000 + 's)');
-      throw new Error('Không gọi được GAS: ' + err.message);
+      throw new Error('Không gọi được GAS (mạng?): ' + err.message);
     });
 }
 
+// Phân loại lỗi: 'fatal' = thử lại cũng vô ích, phải TẠM DỪNG cả hàng đợi chờ anh xử lý (hết
+// tiền nạp trước, chạm trần chi tiêu, key sai/bị khoá, GAS chưa deploy...); còn lại coi là tạm
+// thời -> tự thử lại. Cố ý xếp "không rõ" vào tạm thời: thử lại vài lần rồi mới báo lỗi, tốt hơn
+// là dừng cả đợt vì 1 lỗi lạ.
+function classifyError(msg) {
+  var m = String(msg || '').toLowerCase();
+  if (/lỗi 402|payment required|prepay|credit balance|insufficient.*(fund|credit|balance)/.test(m)) return { kind: 'fatal', why: 'Hết tiền nạp trước (số dư Gemini về 0). Vào AI Studio → Facturation nạp thêm.' };
+  if (/spend(ing)?[ _-]?cap|plafond|spend limit|monthly.*(cap|limit)|billing/.test(m)) return { kind: 'fatal', why: 'Chạm giới hạn chi tiêu tháng hoặc lỗi thanh toán. Vào AI Studio → Dépenses nâng giới hạn.' };
+  if (/lỗi 403|permission_denied|api key not valid|api_key_invalid|gemini_api_key|suspended|restricted/.test(m)) return { kind: 'fatal', why: 'Key Gemini bị từ chối (sai key, bị khoá hoặc chưa cấu hình).' };
+  if (/không phải json/.test(m) && /http (401|403|404)/.test(m)) return { kind: 'fatal', why: 'GAS không phản hồi đúng (chưa deploy, sai URL hoặc quyền truy cập chưa để "Anyone").' };
+  return { kind: 'transient' };
+}
+
 function nextChunk() {
-  var chunk = [];
+  if (PAUSED) return [];
+  var now = Date.now(), chunk = [];
   for (var i = 0; i < PAGES.length; i++) {
     var p = PAGES[i];
-    if (p.status !== 'queued' || !p.base64) continue;
+    if (p.status !== 'queued' || !p.base64 || p.retryAt > now) continue;
     if (p.single) { if (!chunk.length) return [p]; break; }
     chunk.push(p);
     if (chunk.length >= CFG.chunk) break;
   }
+  // Đang còn tách trang mà chưa đủ 1 lô đầy -> chờ thêm trang (đừng gửi lô 1-2 trang lẻ tẻ),
+  // trừ khi không còn lô nào đang chạy (tránh đứng im).
+  if (splitting && chunk.length && chunk.length < CFG.chunk && !chunk[0].single && running > 0) return [];
   return chunk;
 }
 
@@ -311,36 +375,72 @@ function pump() {
     if (!chunk.length) break;
     runChunk(chunk);
   }
+  scheduleWake();
+  updateWakeLock();
   render();
+}
+
+// Có trang đang chờ tới giờ thử lại -> hẹn giờ gọi pump() đúng lúc đó (không ai bấm gì vẫn chạy tiếp).
+function scheduleWake() {
+  if (wakeTimer) { clearTimeout(wakeTimer); wakeTimer = null; }
+  if (PAUSED) return;
+  var now = Date.now(), soonest = Infinity;
+  PAGES.forEach(function (p) { if (p.status === 'queued' && p.retryAt > now) soonest = Math.min(soonest, p.retryAt); });
+  if (soonest !== Infinity) wakeTimer = setTimeout(pump, Math.max(500, soonest - now + 50));
+}
+
+function parseAiJson(res) {
+  if (res.status !== 'success') throw new Error(res.message || 'Gemini lỗi không rõ');
+  var txt = String(res.text || '').trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+  try { return JSON.parse(txt); } catch (e) { throw new Error('AI trả JSON hỏng (có thể bị cắt cụt)'); }
 }
 
 function runChunk(chunk) {
   running++;
+  var isReread = chunk.length === 1 && chunk[0].mode === 'cccd';
   chunk.forEach(function (p) { p.status = 'processing'; p.errorMsg = ''; });
   render();
-  gasRequest('callGemini', {
-    model: CFG.model,
-    promptText: buildPrompt(chunk.length),
-    pages: chunk.map(function (p) { return { mimeType: 'image/jpeg', base64: p.base64 }; })
-  }).then(function (res) {
-    if (res.status !== 'success') throw new Error(res.message || 'Gemini lỗi không rõ');
-    var txt = String(res.text || '').trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
-    var json = JSON.parse(txt);
+  var req = isReread
+    ? buildRereadPages(chunk[0]).then(function (pages) { return { model: CFG.model, promptText: buildRereadPrompt(), pages: pages }; })
+    : Promise.resolve({ model: CFG.model, promptText: buildPrompt(chunk.length), pages: chunk.map(function (p) { return { mimeType: 'image/jpeg', base64: p.base64 }; }) });
+  req.then(function (body) { return gasRequest('callGemini', body); }).then(function (res) {
+    var json = parseAiJson(res);
+    if (isReread) {
+      if (chunk[0].status === 'processing') applyReread(chunk[0], Array.isArray(json) ? json[0] : json);
+      return;
+    }
     var arr = Array.isArray(json) ? json : (json.phieu || []);
     var byIdx = {};
     arr.forEach(function (r) { if (r && r.anh_so != null) byIdx[parseInt(r.anh_so, 10)] = r; });
-    var complete = arr.length === chunk.length && chunk.every(function (_, i) { return byIdx[i + 1]; });
-    if (!complete) {
-      if (chunk.length === 1 && arr.length === 1) { byIdx[1] = arr[0]; complete = true; }
-    }
-    if (!complete) {
-      // AI trả lệch số lượng — KHÔNG ghép đoán, tách ra đọc lại từng trang riêng
-      chunk.forEach(function (p) { p.status = 'queued'; p.single = true; });
+    if (chunk.length === 1 && arr.length === 1) byIdx[1] = arr[0];
+    var complete = chunk.every(function (_, i) { return byIdx[i + 1]; }) && (arr.length === chunk.length);
+    if (!complete) throw new Error('AI trả ' + arr.length + ' kết quả cho ' + chunk.length + ' trang (lệch số)');
+    chunk.forEach(function (p, i) {
+      if (p.status !== 'processing') return; // dòng đã bị xoá trong lúc chờ
+      applyResult(p, byIdx[i + 1]);
+    });
+  }).catch(function (err) {
+    var c = classifyError(err.message);
+    if (c.kind === 'fatal') {
+      // Trả trang về hàng đợi (KHÔNG tính là lỗi, không tốn lượt thử) và dừng cả hàng đợi.
+      chunk.forEach(function (p) { if (p.status === 'processing') { p.status = 'queued'; } });
+      pauseQueue(c.why + '\nChi tiết: ' + err.message);
       return;
     }
-    chunk.forEach(function (p, i) { applyResult(p, byIdx[i + 1]); });
-  }).catch(function (err) {
-    chunk.forEach(function (p) { p.status = 'error'; p.errorMsg = err.message; });
+    chunk.forEach(function (p) {
+      if (p.status !== 'processing') return;
+      p.attempts++;
+      p.errorMsg = err.message;
+      if (p.attempts >= MAX_ATTEMPTS) {
+        // Đọc lại CCCD mà vẫn lỗi mạng mãi -> GIỮ NGUYÊN kết quả lần đầu (vẫn có cờ cảnh báo),
+        // không đánh dấu cả dòng là lỗi vì dữ liệu chính đã có.
+        if (p.mode === 'cccd') { p.mode = null; p.status = 'done'; p.attempts = 0; p.errorMsg = ''; return; }
+        p.status = 'error'; return;
+      }
+      p.status = 'queued';
+      p.single = true; // lần sau đọc lẻ từng trang
+      p.retryAt = Date.now() + RETRY_DELAYS_MS[Math.min(p.attempts - 1, RETRY_DELAYS_MS.length - 1)];
+    });
   }).then(function () {
     running--;
     saveSnapshot();
@@ -348,19 +448,136 @@ function runChunk(chunk) {
   });
 }
 
+// cccd_tung_o (mảng 12 ô) -> chuỗi; ô không đọc được ("?") giữ nguyên dấu ? để kiểm tra bắt lỗi.
+function cccdFromAi(r) {
+  if (Array.isArray(r.cccd_tung_o) && r.cccd_tung_o.length) {
+    return r.cccd_tung_o.map(function (x) { var s = String(x == null ? '' : x).trim(); return /^\d$/.test(s) ? s : '?'; }).join('');
+  }
+  return String(r.cccd || '');
+}
+
 function applyResult(p, r) {
+  p.attempts = 0; p.retryAt = 0; p.errorMsg = ''; p.mode = null; p.note = '';
   if (r.khong_phai_phieu === true) {
     p.status = 'skip'; p.data = emptyData(); p.aiUnsure = []; p.flags = ['AI báo: không phải trang 1 của phiếu'];
     return;
   }
   p.data = {
     ho_ten: r.ho_ten || '', gioi_tinh: r.gioi_tinh || '', ngay_sinh: r.ngay_sinh || '', dan_toc: r.dan_toc || '',
-    cccd: r.cccd || '', nghe_nghiep: r.nghe_nghiep || '', cong_ty: r.cong_ty || ''
+    cccd: cccdFromAi(r), nghe_nghiep: r.nghe_nghiep || '', cong_ty: r.cong_ty || ''
   };
   p.aiUnsure = Array.isArray(r.khong_chac) ? r.khong_chac : [];
   normalizeData(p.data);
   p.status = 'done';
+  // CCCD nghi sai -> xếp hàng đọc lại riêng CCCD 1 lần (chỉ những trang này mới tốn thêm quota)
+  if (CFG.reread && !p.cccdReread && p.base64 && (cccdIssues(p.data).length || p.aiUnsure.indexOf('cccd') !== -1)) {
+    p.mode = 'cccd'; p.status = 'queued'; p.single = true;
+  }
 }
+
+// ============================================================
+// ĐỌC LẠI CCCD — gửi lại ĐÚNG 1 trang: ảnh nguyên trang + ảnh PHÓNG TO vùng thông tin hành chính
+// (dải ngang ~26%–66% chiều cao trang, nơi có mục 1 đến 9 với phiếu chụp/cắt sát mép giấy).
+// Chỉ hỏi 3 mục liên quan: giới tính, ngày sinh, CCCD — câu trả lời ngắn, rẻ.
+// ============================================================
+var REREAD_BAND = [0.26, 0.66];
+function buildRereadPages(p) {
+  var full = { mimeType: 'image/jpeg', base64: p.base64 };
+  return new Promise(function (resolveRaw) {
+    var done = false;
+    var resolve = function (v) { if (!done) { done = true; resolveRaw(v); } };
+    setTimeout(function () { resolve([full]); }, 3000); // cắt ảnh bị treo -> gửi ảnh nguyên trang, không đứng chờ
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var y0 = Math.round(img.height * REREAD_BAND[0]), h = Math.round(img.height * (REREAD_BAND[1] - REREAD_BAND[0]));
+        var scale = Math.max(1, 2000 / img.width); // phóng để chữ số trong ô to hơn
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale); c.height = Math.round(h * scale);
+        var ctx = c.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, y0, img.width, h, 0, 0, c.width, c.height);
+        var b64 = c.toDataURL('image/jpeg', 0.92).split(',')[1];
+        c.width = c.height = 0;
+        resolve([full, { mimeType: 'image/jpeg', base64: b64 }]);
+      } catch (e) { resolve([full]); } // cắt lỗi thì gửi mỗi ảnh nguyên trang, vẫn đọc được
+    };
+    img.onerror = function () { resolve([full]); };
+    img.src = 'data:image/jpeg;base64,' + p.base64;
+  });
+}
+
+function buildRereadPrompt() {
+  return [
+    'Ảnh 1 là trang 1 phiếu "Mẫu 03 - Giấy khám sức khỏe" viết tay. Ảnh 2 (nếu có) là phần PHÓNG TO vùng "THÔNG TIN HÀNH CHÍNH" của chính trang đó — ưu tiên nhìn ảnh 2 để đọc chữ số cho rõ.',
+    'CHỈ đọc 3 mục sau, trả về DUY NHẤT 1 JSON object, không giải thích, không markdown:',
+    '- gioi_tinh: mục 2, ô được đánh dấu: "Nam" hoặc "Nữ"',
+    '- ngay_sinh: mục 3, dạng dd/MM/yyyy',
+    '- cccd_tung_o: mục 6 (Số CCCD) — mảng ĐÚNG 12 phần tử, mỗi phần tử là chữ số trong ĐÚNG 1 ô vuông, đếm ô từ trái sang phải. Đọc thật chậm từng ô. Ô không đọc được ghi "?".',
+    'Chữ số viết tay hay nhầm: 1↔7, 0↔6, 3↔8, 5↔6, 4↔9, 2↔7 — nhìn kỹ nét móc, nét gạch ngang, nét cong khép kín hay hở.',
+    'Quy tắc CCCD để tự soát: 3 số đầu là mã tỉnh (bắt đầu bằng 0); số thứ 4: 0 = Nam sinh 19xx, 1 = Nữ sinh 19xx, 2 = Nam sinh 20xx, 3 = Nữ sinh 20xx; số thứ 5-6 = 2 số cuối năm sinh. Nếu không khớp với giới tính/ngày sinh, nhìn lại thật kỹ cả 3 mục. TUYỆT ĐỐI KHÔNG sửa số chỉ để cho khớp — chữ thực tế thế nào ghi đúng thế ấy.',
+    '- khong_chac: mảng tên các mục ở trên vẫn không chắc chắn (vd ["cccd"]), mảng rỗng nếu chắc chắn.'
+  ].join('\n');
+}
+
+// So kết quả đọc lại với lần đầu: lấy bộ (CCCD, giới tính, ngày sinh) nào qua kiểm tra; nếu cả 2
+// đều không qua thì giữ lần đầu, vẫn để cờ cho anh xem.
+function applyReread(p, r) {
+  p.mode = null; p.cccdReread = true; p.status = 'done'; p.attempts = 0; p.retryAt = 0; p.errorMsg = '';
+  if (!r) return;
+  var cand = Object.assign({}, p.data);
+  var newCccd = cccdFromAi(r);
+  if (newCccd) cand.cccd = newCccd;
+  if (r.gioi_tinh) cand.gioi_tinh = r.gioi_tinh;
+  if (r.ngay_sinh) cand.ngay_sinh = r.ngay_sinh;
+  normalizeData(cand);
+  var before = p.data.cccd;
+  var oldIssues = cccdIssues(p.data).length, newIssues = cccdIssues(cand).length;
+  var stillUnsure = Array.isArray(r.khong_chac) && r.khong_chac.indexOf('cccd') !== -1;
+  if (newIssues === 0) {
+    var changed = cand.cccd !== p.data.cccd || cand.gioi_tinh !== p.data.gioi_tinh || cand.ngay_sinh !== p.data.ngay_sinh;
+    p.data = cand;
+    p.aiUnsure = p.aiUnsure.filter(function (f) { return ['cccd', 'gioi_tinh', 'ngay_sinh'].indexOf(f) === -1; });
+    if (stillUnsure) p.aiUnsure.push('cccd');
+    p.note = changed ? 'CCCD đã tự đọc lại (lần đầu: ' + before + ')' : 'CCCD đã tự đọc lại, khớp lần đầu';
+  } else if (newIssues < oldIssues) {
+    p.data = cand;
+    p.note = 'CCCD đã tự đọc lại, vẫn còn lệch (lần đầu: ' + before + ')';
+  } else {
+    p.note = 'CCCD đã tự đọc lại, vẫn còn lệch' + (newCccd && newCccd !== before ? ' (lần 2 đọc: ' + newCccd + ')' : '');
+    if (p.aiUnsure.indexOf('cccd') === -1) p.aiUnsure.push('cccd');
+  }
+}
+
+function pauseQueue(reason) {
+  PAUSED = true; PAUSE_REASON = reason || '';
+  render();
+}
+function resumeQueue() {
+  PAUSED = false; PAUSE_REASON = '';
+  pump();
+}
+
+// ============================================================
+// GIỮ MÀN HÌNH SÁNG khi đang chạy — máy tắt màn hình/ngủ giữa chừng là đứt kết nối.
+// Trình duyệt không hỗ trợ thì thôi, không ảnh hưởng gì khác.
+// ============================================================
+var wakeLock = null;
+function isBusy() { return running > 0 || splitting > 0 || (!PAUSED && PAGES.some(function (p) { return p.status === 'queued'; })); }
+function updateWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  if (isBusy() && !wakeLock && document.visibilityState === 'visible') {
+    navigator.wakeLock.request('screen').then(function (l) {
+      wakeLock = l; l.addEventListener('release', function () { wakeLock = null; });
+    }).catch(function () {});
+  } else if (!isBusy() && wakeLock) {
+    wakeLock.release().catch(function () {}); wakeLock = null;
+  }
+}
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') { updateWakeLock(); pump(); }
+});
+window.addEventListener('online', function () { pump(); });
 
 // ============================================================
 // CHUẨN HOÁ + KIỂM TRA — chạy lại mỗi khi anh sửa 1 ô.
@@ -397,21 +614,39 @@ function validate(p, dupSet) {
   var dm = d.ngay_sinh.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!dm) { bad.ngay_sinh = 1; flags.push('Ngày sinh sai định dạng'); }
   else {
-    var age = new Date().getFullYear() - parseInt(dm[3], 10);
-    if (age < 15 || age > 75) { bad.ngay_sinh = 1; flags.push('Tuổi bất thường (' + age + ')'); }
+    var age = ageToday(dm);
+    if (age < AGE_MIN || age > AGE_MAX) { bad.ngay_sinh = 1; flags.push('Ngoài độ tuổi ' + AGE_MIN + '–' + AGE_MAX + ' (' + age + ' tuổi)'); }
   }
-  if (!d.cccd) { bad.cccd = 1; flags.push('Thiếu CCCD'); }
-  else if (!/^\d{12}$/.test(d.cccd)) { bad.cccd = 1; flags.push('CCCD không đủ 12 số (' + d.cccd.length + ')'); }
-  else if (dm && d.gioi_tinh) {
-    var y = parseInt(dm[3], 10);
-    var expect4 = (Math.floor(y / 100) - 19) * 2 + (d.gioi_tinh === 'Nữ' ? 1 : 0);
-    if (parseInt(d.cccd.charAt(3), 10) !== expect4) { bad.cccd = 1; bad.gioi_tinh = 1; flags.push('CCCD số thứ 4 lệch giới tính/năm sinh'); }
-    if (d.cccd.substr(4, 2) !== ('0' + (y % 100)).slice(-2)) { bad.cccd = 1; bad.ngay_sinh = 1; flags.push('CCCD số 5-6 lệch năm sinh'); }
-  }
-  if (d.cccd && dupSet[d.cccd] > 1) { bad.cccd = 1; flags.push('Trùng CCCD với dòng khác'); }
+  cccdIssues(d).forEach(function (it) { bad.cccd = 1; if (it.alsoBad) bad[it.alsoBad] = 1; flags.push(it.msg); });
+  if (d.cccd && dupSet[d.cccd] > 1) { bad.cccd = 1; flags.push('Trùng CCCD với dòng khác (chụp 2 lần? xoá bớt 1 dòng)'); }
   p.aiUnsure.forEach(function (f) { if (d.hasOwnProperty(f)) { bad[f] = 1; } });
   if (p.aiUnsure.length) flags.push('AI không chắc: ' + p.aiUnsure.join(', '));
   return { bad: bad, flags: flags };
+}
+
+// Tuổi tròn tính tới hôm nay (đủ ngày tháng, chưa tới sinh nhật năm nay thì trừ 1)
+function ageToday(dm) {
+  var t = new Date(), d = parseInt(dm[1], 10), m = parseInt(dm[2], 10), y = parseInt(dm[3], 10);
+  var age = t.getFullYear() - y;
+  if (t.getMonth() + 1 < m || (t.getMonth() + 1 === m && t.getDate() < d)) age--;
+  return age;
+}
+
+// Các lỗi về CCCD tự phát hiện được (dùng cả để gắn cờ lẫn để quyết định có tự đọc lại không).
+function cccdIssues(d) {
+  var out = [], c = d.cccd || '';
+  if (!c) { out.push({ msg: 'Thiếu CCCD' }); return out; }
+  if (c.indexOf('?') !== -1) { out.push({ msg: 'CCCD có ô không đọc được (' + c + ')' }); return out; }
+  if (!/^\d{12}$/.test(c)) { out.push({ msg: 'CCCD không đủ 12 số (' + c.length + ')' }); return out; }
+  if (!PROVINCE_CODES[c.substr(0, 3)]) out.push({ msg: 'CCCD 3 số đầu "' + c.substr(0, 3) + '" không phải mã tỉnh' });
+  var dm = String(d.ngay_sinh || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (dm && d.gioi_tinh) {
+    var y = parseInt(dm[3], 10);
+    var expect4 = (Math.floor(y / 100) - 19) * 2 + (d.gioi_tinh === 'Nữ' ? 1 : 0);
+    if (parseInt(c.charAt(3), 10) !== expect4) out.push({ msg: 'CCCD số thứ 4 lệch giới tính/năm sinh', alsoBad: 'gioi_tinh' });
+    if (c.substr(4, 2) !== ('0' + (y % 100)).slice(-2)) out.push({ msg: 'CCCD số 5-6 lệch năm sinh', alsoBad: 'ngay_sinh' });
+  }
+  return out;
 }
 
 function dupCounts() {
@@ -421,33 +656,49 @@ function dupCounts() {
 }
 
 // ============================================================
-// HIỂN THỊ
+// HIỂN THỊ — gom nhiều lần gọi render() liền nhau thành 1 lần vẽ (tránh giật khi tách 100 trang)
 // ============================================================
 var FIELD_ORDER = ['ho_ten', 'gioi_tinh', 'ngay_sinh', 'dan_toc', 'cccd', 'nghe_nghiep', 'cong_ty'];
-
+var renderQueued = false;
 function render() {
+  if (renderQueued) return;
+  renderQueued = true;
+  (window.requestAnimationFrame || setTimeout)(function () { renderQueued = false; renderNow(); });
+}
+
+function renderNow() {
   var tbody = document.getElementById('tbody');
   var onlyFlag = document.getElementById('filterFlagged').checked;
   var dups = dupCounts();
-  var counts = { total: PAGES.length, done: 0, flag: 0, err: 0, wait: 0, skip: 0 };
+  var counts = { total: PAGES.length, done: 0, flag: 0, err: 0, wait: 0, skip: 0, retry: 0, reread: 0, fixed: 0 };
+  var now = Date.now();
   var html = '';
   PAGES.forEach(function (p, idx) {
     var v = validate(p, dups);
     p.flags = v.flags;
+    if (p.mode === 'cccd') counts.reread++;
+    if (p.note && p.note.indexOf('lần đầu:') !== -1 && !v.flags.length) counts.fixed++;
     if (p.status === 'done') { counts.done++; if (v.flags.length) counts.flag++; }
     else if (p.status === 'error') counts.err++;
     else if (p.status === 'skip') counts.skip++;
-    else counts.wait++;
+    else { counts.wait++; if (p.status === 'queued' && p.attempts > 0) counts.retry++; }
     var flagged = v.flags.length > 0 || p.status === 'error' || p.status === 'skip';
     if (onlyFlag && !flagged) return;
     var cls = p.status === 'error' ? 'row-error' : (p.status === 'done' || p.status === 'skip' ? (flagged ? 'row-flag' : '') : 'row-busy');
+    var del = '<button class="btn btn-sm btn-del" data-del="' + p.id + '" title="Xoá dòng này (vd phiếu chụp 2 lần)">🗑</button>';
+    var retry = '<button class="btn btn-sm btn-secondary" data-retry="' + p.id + '" title="Đọc lại trang này">↻</button>';
     html += '<tr class="' + cls + '" data-id="' + p.id + '">';
     html += '<td>' + (idx + 1) + '<div class="src">' + esc(p.source) + '</div></td>';
-    html += '<td>' + (p.thumb ? '<img class="thumb" src="' + p.thumb + '" data-view="' + p.id + '">' : '<div class="thumb-empty">mất ảnh<br>(khôi phục)</div>') + '</td>';
+    html += '<td>' + (p.thumb ? '<img class="thumb" src="' + p.thumb + '" data-view="' + p.id + '">' : '<div class="thumb-empty">không có<br>ảnh</div>') + '</td>';
     if (p.status === 'queued' || p.status === 'processing') {
-      html += '<td colspan="7" style="color:var(--muted);">' + (p.status === 'processing' ? '⏳ AI đang đọc...' : '… đang chờ lượt') + '</td><td></td><td></td>';
+      var label = p.status === 'processing' ? (p.mode === 'cccd' ? '🔍 AI đang đọc lại kỹ CCCD (ảnh phóng to)...' : '⏳ AI đang đọc...')
+        : (PAUSED ? '⏸ Đã tạm dừng'
+          : (p.mode === 'cccd' && !p.attempts ? '🔍 CCCD nghi sai — chờ đọc lại kỹ' : p.attempts > 0 ? '↻ Lỗi tạm thời, tự thử lại lần ' + (p.attempts + 1) + '/' + MAX_ATTEMPTS + (p.retryAt > now ? ' sau ~' + Math.ceil((p.retryAt - now) / 1000) + 's' : '') : '… đang chờ lượt'));
+      html += '<td colspan="7" style="color:var(--muted);">' + label + (p.attempts > 0 && p.errorMsg ? '<div class="src" style="white-space:normal;">' + esc(p.errorMsg) + '</div>' : '') + '</td><td></td>';
+      html += '<td><div class="row-actions">' + (p.status === 'queued' ? del : '') + '</div></td>';
     } else if (p.status === 'error') {
-      html += '<td colspan="7" style="color:#a50e0e;font-size:12px;">Lỗi: ' + esc(p.errorMsg) + '</td><td></td><td><button class="btn btn-sm btn-secondary" data-retry="' + p.id + '">↻</button></td>';
+      html += '<td colspan="7" style="color:#a50e0e;font-size:12px;">Lỗi sau ' + p.attempts + ' lần thử: ' + esc(p.errorMsg) + '</td><td></td>';
+      html += '<td><div class="row-actions">' + retry + del + '</div></td>';
     } else {
       FIELD_ORDER.forEach(function (f) {
         var b = v.bad[f] ? ' bad' : '';
@@ -457,8 +708,9 @@ function render() {
           html += '<td><input data-f="' + f + '" class="' + b + '" value="' + esc(p.data[f]) + '"></td>';
         }
       });
-      html += '<td class="flags' + (v.flags.length ? '' : ' ok') + '">' + (v.flags.length ? esc(v.flags.join(' · ')) : '✓ Ổn') + '</td>';
-      html += '<td><button class="btn btn-sm btn-secondary" data-retry="' + p.id + '" title="Đọc lại trang này">↻</button></td>';
+      html += '<td class="flags' + (v.flags.length ? '' : ' ok') + '">' + (v.flags.length ? esc(v.flags.join(' · ')) : '✓ Ổn') +
+        (p.note ? '<div style="color:var(--muted);">' + esc(p.note) + '</div>' : '') + '</td>';
+      html += '<td><div class="row-actions">' + retry + del + '</div></td>';
     }
     html += '</tr>';
   });
@@ -471,7 +723,24 @@ function render() {
     'Tổng <b>' + counts.total + '</b> trang · Đã đọc <b>' + counts.done + '</b> · Cần xem <b style="color:#a5530a;">' + counts.flag + '</b>' +
     (counts.skip ? ' · Không phải phiếu <b>' + counts.skip + '</b>' : '') +
     (counts.err ? ' · Lỗi <b style="color:#d93025;">' + counts.err + '</b>' : '') +
-    (counts.wait ? ' · Đang chờ/đọc <b>' + counts.wait + '</b>' : '');
+    (counts.wait ? ' · Đang chờ/đọc <b>' + counts.wait + '</b>' : '') +
+    (counts.retry ? ' (đang thử lại <b>' + counts.retry + '</b>)' : '') +
+    (counts.reread ? ' · Đang đọc lại CCCD <b>' + counts.reread + '</b>' : '') +
+    (counts.fixed ? ' · CCCD tự sửa được <b style="color:#1e7e34;">' + counts.fixed + '</b>' : '') +
+    (splitting ? ' · <b>đang tách trang...</b>' : '');
+
+  var banner = document.getElementById('pauseBanner');
+  if (PAUSED) {
+    var auto = !!PAUSE_REASON;
+    banner.className = 'banner show' + (auto ? '' : ' info');
+    banner.innerHTML = auto
+      ? '<b>⏸ Đã tự tạm dừng</b> — ' + esc(PAUSE_REASON).replace(/\n/g, '<br>') + '<br>Các trang chưa đọc vẫn nằm nguyên trong hàng đợi, không mất lượt. Xử lý xong bấm <b>▶ Tiếp tục</b>.'
+      : '<b>⏸ Đang tạm dừng</b> — các lô đang chạy dở sẽ đọc xong, không gửi lô mới. Bấm <b>▶ Tiếp tục</b> để chạy tiếp.';
+  } else {
+    banner.className = 'banner';
+  }
+  document.getElementById('btnPause').textContent = PAUSED ? '▶ Tiếp tục' : '⏸ Tạm dừng';
+
   var btn = document.getElementById('btnExport');
   btn.disabled = counts.done === 0;
   document.getElementById('exportHint').textContent = counts.wait ? 'Đang đọc — có thể xuất phần đã xong bất cứ lúc nào.' : (counts.flag ? counts.flag + ' dòng còn cờ cảnh báo (vẫn xuất được).' : '');
@@ -480,8 +749,7 @@ function render() {
 document.getElementById('tbody').addEventListener('change', function (e) {
   var el = e.target, f = el.getAttribute('data-f');
   if (!f) return;
-  var id = parseInt(el.closest('tr').getAttribute('data-id'), 10);
-  var p = PAGES.find(function (x) { return x.id === id; });
+  var p = findPage(parseInt(el.closest('tr').getAttribute('data-id'), 10));
   if (!p) return;
   p.data[f] = el.value;
   p.aiUnsure = p.aiUnsure.filter(function (x) { return x !== f; }); // anh đã tự xem/sửa ô này -> bỏ cờ "AI không chắc"
@@ -491,37 +759,59 @@ document.getElementById('tbody').addEventListener('change', function (e) {
 });
 
 document.getElementById('tbody').addEventListener('click', function (e) {
-  var r = e.target.getAttribute('data-retry');
+  var btn = e.target.closest('button');
+  var r = btn && btn.getAttribute('data-retry');
   if (r) {
-    var p = PAGES.find(function (x) { return x.id === parseInt(r, 10); });
+    var p = findPage(parseInt(r, 10));
     if (!p) return;
-    if (!p.base64) { toast('Trang này đã mất ảnh (khôi phục từ bản lưu tạm) — thả lại file PDF gốc nếu cần đọc lại.', 5000); return; }
-    p.status = 'queued'; p.single = true; pump(); return;
+    if (!p.base64) { toast('Trang này không còn ảnh (khôi phục từ bản lưu tạm hoặc tách lỗi) — thả lại file PDF gốc nếu cần đọc lại.', 5000); return; }
+    p.status = 'queued'; p.single = true; p.attempts = 0; p.retryAt = 0; p.mode = null; p.cccdReread = false; p.note = ''; pump(); return;
   }
+  var d = btn && btn.getAttribute('data-del');
+  if (d) { deletePage(parseInt(d, 10)); return; }
   var v = e.target.getAttribute('data-view');
   if (v) openViewer(parseInt(v, 10));
 });
+
+// Xoá 1 dòng (vd phiếu lỡ chụp 2 lần). Có nút "Hoàn tác" vài giây phòng bấm nhầm, thay vì hỏi
+// xác nhận mỗi lần — xoá nhiều dòng trùng liên tiếp sẽ nhanh hơn.
+function deletePage(id) {
+  var idx = -1;
+  for (var i = 0; i < PAGES.length; i++) if (PAGES[i].id === id) idx = i;
+  if (idx < 0) return;
+  var p = PAGES[idx];
+  if (p.status === 'processing') { toast('Dòng này AI đang đọc — đợi đọc xong rồi xoá.'); return; }
+  PAGES.splice(idx, 1);
+  saveSnapshot();
+  render();
+  var name = p.data.ho_ten || p.source;
+  toast('Đã xoá: ' + name, 6000, 'Hoàn tác', function () {
+    PAGES.splice(Math.min(idx, PAGES.length), 0, p);
+    saveSnapshot();
+    pump();
+  });
+}
 
 // ============================================================
 // XEM ẢNH GỐC
 // ============================================================
 var viewerId = null;
 function openViewer(id) {
-  var p = PAGES.find(function (x) { return x.id === id; });
-  if (!p || !p.fullDataUrl) return;
+  var p = findPage(id);
+  if (!p || !p.base64) return;
   viewerId = id;
   var img = document.getElementById('viewerImg');
-  img.src = p.fullDataUrl; img.classList.remove('zoomed');
+  img.src = 'data:image/jpeg;base64,' + p.base64; img.classList.remove('zoomed');
   document.getElementById('viewerTitle').textContent = p.source + (p.data.ho_ten ? ' — ' + p.data.ho_ten : '');
   document.getElementById('viewer').classList.add('show');
 }
 function stepViewer(dir) {
-  var withImg = PAGES.filter(function (p) { return p.fullDataUrl; });
+  var withImg = PAGES.filter(function (p) { return p.base64; });
   var i = withImg.findIndex(function (p) { return p.id === viewerId; });
   var n = withImg[i + dir];
   if (n) openViewer(n.id);
 }
-document.getElementById('viewerClose').onclick = function () { document.getElementById('viewer').classList.remove('show'); };
+document.getElementById('viewerClose').onclick = function () { document.getElementById('viewer').classList.remove('show'); document.getElementById('viewerImg').src = ''; };
 document.getElementById('viewerZoom').onclick = function () { document.getElementById('viewerImg').classList.toggle('zoomed'); };
 document.getElementById('viewerPrev').onclick = function () { stepViewer(-1); };
 document.getElementById('viewerNext').onclick = function () { stepViewer(1); };
@@ -539,6 +829,7 @@ document.addEventListener('keydown', function (e) {
 var EXPORT_HEADERS = ['STT', 'Họ và tên', 'Giới tính', 'Ngày sinh', 'Dân tộc', 'Số CCCD', 'Nghề nghiệp', 'Nơi làm việc', 'Ghi chú kiểm tra', 'Nguồn (file - trang)'];
 
 document.getElementById('btnExport').addEventListener('click', function () {
+  if (typeof XLSX === 'undefined') { toast('Chưa tải được thư viện Excel — kiểm tra mạng rồi tải lại trang (dữ liệu vẫn được giữ).', 6000); return; }
   var dups = dupCounts();
   var rows = [EXPORT_HEADERS];
   var stt = 0;
@@ -546,10 +837,9 @@ document.getElementById('btnExport').addEventListener('click', function () {
     if (p.status !== 'done') return;
     var v = validate(p, dups);
     var d = p.data;
-    rows.push([++stt, d.ho_ten, d.gioi_tinh, d.ngay_sinh, d.dan_toc, d.cccd, d.nghe_nghiep, d.cong_ty, v.flags.join('; '), p.source]);
+    rows.push([++stt, d.ho_ten, d.gioi_tinh, d.ngay_sinh, d.dan_toc, d.cccd, d.nghe_nghiep, d.cong_ty, v.flags.concat(p.note ? [p.note] : []).join('; '), p.source]);
   });
   var ws = XLSX.utils.aoa_to_sheet(rows);
-  // ép cột Ngày sinh (D) và CCCD (F) thành kiểu chữ
   for (var r = 1; r < rows.length; r++) {
     ['D', 'F'].forEach(function (col) {
       var cell = ws[col + (r + 1)];
@@ -567,10 +857,13 @@ document.getElementById('btnExport').addEventListener('click', function () {
 // LƯU TẠM — chỉ lưu dữ liệu chữ (không lưu ảnh, quá nặng cho localStorage)
 // ============================================================
 function saveSnapshot() {
-  var lite = PAGES.filter(function (p) { return p.status === 'done' || p.status === 'skip' || p.status === 'error'; })
-    .map(function (p) { return { id: p.id, source: p.source, status: p.status, data: p.data, aiUnsure: p.aiUnsure, errorMsg: p.errorMsg }; });
+  var lite = PAGES.filter(function (p) { return p.status === 'done' || p.status === 'skip' || p.status === 'error' || p.mode === 'cccd'; })
+    .map(function (p) { return { id: p.id, source: p.source, status: p.mode === 'cccd' ? 'done' : p.status, data: p.data, aiUnsure: p.aiUnsure, errorMsg: p.errorMsg, attempts: p.attempts, note: p.note || '', cccdReread: !!p.cccdReread }; });
   if (!lite.length) { try { localStorage.removeItem(SNAPSHOT_KEY); } catch (e) {} return; }
-  lsSet(SNAPSHOT_KEY, JSON.stringify({ savedAt: Date.now(), nextId: NEXT_ID, pages: lite }));
+  try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ savedAt: Date.now(), nextId: NEXT_ID, pages: lite })); }
+  catch (e) {
+    if (!saveSnapshot.warned) { saveSnapshot.warned = true; toast('Bộ nhớ lưu tạm của trình duyệt đã đầy — nên xuất Excel rồi bấm "Xoá tất cả" trước khi làm lô tiếp.', 8000); }
+  }
 }
 
 function restoreSnapshot() {
@@ -581,7 +874,8 @@ function restoreSnapshot() {
   var when = snap.savedAt ? new Date(snap.savedAt).toLocaleString('vi-VN') : '';
   if (confirm('Có ' + snap.pages.length + ' trang đã đọc từ phiên trước (' + when + ') chưa xuất. Khôi phục để làm tiếp?\n\n(Ảnh xem trước sẽ trống — dữ liệu đã đọc vẫn còn nguyên.)\nBấm Hủy để bỏ bản lưu này.')) {
     PAGES = snap.pages.map(function (p) {
-      p.base64 = null; p.fullDataUrl = null; p.thumb = null; p.single = true; p.flags = [];
+      p.base64 = null; p.thumb = null; p.single = true; p.flags = []; p.retryAt = 0; p.mode = null; p.note = p.note || '';
+      p.attempts = p.attempts || 0;
       if (!p.data) p.data = emptyData();
       if (!p.aiUnsure) p.aiUnsure = [];
       return p;
@@ -602,7 +896,10 @@ function initSettings() {
   g.onchange = function () { CFG.gasUrl = g.value.trim(); lsSet('ocr_gas_url', CFG.gasUrl); };
   m.onchange = function () { CFG.model = m.value.trim(); lsSet('ocr_gemini_model', CFG.model); };
   c.onchange = function () { CFG.chunk = Math.max(1, Math.min(10, parseInt(c.value, 10) || 5)); c.value = CFG.chunk; lsSet('cn_chunk', CFG.chunk); };
-  k.onchange = function () { CFG.concurrency = Math.max(1, Math.min(4, parseInt(k.value, 10) || 2)); k.value = CFG.concurrency; lsSet('cn_concurrency', CFG.concurrency); };
+  var rr = document.getElementById('setReread');
+  rr.checked = CFG.reread;
+  rr.onchange = function () { CFG.reread = rr.checked; lsSet('cn_reread', rr.checked ? '1' : '0'); };
+  k.onchange = function () { CFG.concurrency = Math.max(1, Math.min(4, parseInt(k.value, 10) || 2)); k.value = CFG.concurrency; lsSet('cn_concurrency', CFG.concurrency); pump(); };
   document.getElementById('btnToggleSettings').onclick = function () { document.getElementById('settingsPanel').classList.toggle('show'); };
 }
 
@@ -617,20 +914,21 @@ function initDrop() {
 
 function initButtons() {
   document.getElementById('filterFlagged').onchange = render;
+  document.getElementById('btnPause').onclick = function () { if (PAUSED) resumeQueue(); else pauseQueue(''); };
   document.getElementById('btnRetryErrors').onclick = function () {
     var n = 0;
-    PAGES.forEach(function (p) { if (p.status === 'error' && p.base64) { p.status = 'queued'; n++; } });
+    PAGES.forEach(function (p) { if (p.status === 'error' && p.base64) { p.status = 'queued'; p.attempts = 0; p.retryAt = 0; p.single = true; n++; } });
     if (!n) { toast('Không có trang lỗi nào đọc lại được.'); return; }
-    pump();
+    if (PAUSED) resumeQueue(); else pump();
   };
   document.getElementById('btnClearAll').onclick = function () {
     if (!PAGES.length) return;
-    if (running) { toast('Đang đọc dở — đợi xong rồi hãy xoá.'); return; }
+    if (running || splitting) { toast('Đang đọc/tách dở — bấm Tạm dừng, đợi xong rồi hãy xoá.'); return; }
     if (!confirm('Xoá toàn bộ ' + PAGES.length + ' trang (cả bản lưu tạm)? Nhớ xuất Excel trước nếu cần.')) return;
-    PAGES = []; saveSnapshot(); render();
+    PAGES = []; PAUSED = false; PAUSE_REASON = ''; saveSnapshot.warned = false; saveSnapshot(); pump();
   };
   window.addEventListener('beforeunload', function (e) {
-    if (running || PAGES.some(function (p) { return p.status === 'queued'; })) { e.preventDefault(); e.returnValue = ''; }
+    if (isBusy()) { e.preventDefault(); e.returnValue = ''; }
   });
 }
 
