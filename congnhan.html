@@ -125,7 +125,7 @@
         <thead><tr>
           <th>#</th><th>Ảnh</th><th style="min-width:180px;">Họ và tên</th><th style="min-width:72px;">Giới tính</th>
           <th style="min-width:105px;">Ngày sinh</th><th style="min-width:80px;">Dân tộc</th><th style="min-width:130px;">Số CCCD</th>
-          <th style="min-width:130px;">Nghề nghiệp</th><th style="min-width:170px;">Nơi làm việc</th><th>Kiểm tra</th><th></th>
+          <th style="min-width:130px;">Nghề nghiệp</th><th style="min-width:170px;">Nơi làm việc</th><th style="min-width:260px;">Nơi ở hiện tại</th><th>Kiểm tra</th><th></th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -210,7 +210,7 @@ function newPage(source, base64, thumb) {
   return { id: NEXT_ID++, source: source, base64: base64, thumb: thumb, status: base64 ? 'queued' : 'error',
     single: false, attempts: 0, retryAt: 0, mode: null, note: '', cccdReread: false, data: emptyData(), aiUnsure: [], flags: [], errorMsg: base64 ? '' : 'Không tách được trang này từ file' };
 }
-function emptyData() { return { ho_ten: '', gioi_tinh: '', ngay_sinh: '', dan_toc: '', cccd: '', nghe_nghiep: '', cong_ty: '' }; }
+function emptyData() { return { ho_ten: '', gioi_tinh: '', ngay_sinh: '', dan_toc: '', cccd: '', nghe_nghiep: '', cong_ty: '', noi_o: '' }; }
 
 if (typeof pdfjsLib !== 'undefined') pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
@@ -317,6 +317,7 @@ function buildPrompt(n) {
     '  Tự kiểm tra sau khi đọc: số thứ 4 cho biết giới tính + thế kỷ sinh (0 = Nam sinh 19xx, 1 = Nữ sinh 19xx, 2 = Nam sinh 20xx, 3 = Nữ sinh 20xx); số thứ 5-6 là 2 số cuối năm sinh; 3 số đầu là mã tỉnh (luôn bắt đầu bằng 0). Đối chiếu với mục 2 và mục 3 bạn vừa đọc. Nếu KHÔNG khớp, nhìn lại thật kỹ đúng các ô đó trên ảnh. TUYỆT ĐỐI KHÔNG sửa số chỉ để cho khớp — nếu nét chữ thực tế vẫn như vậy thì ghi đúng nét chữ và đưa "cccd" vào khong_chac.',
     '- nghe_nghiep: mục 9, phần NGHỀ (vd "Công nhân"), bỏ phần tên công ty',
     '- cong_ty: NƠI LÀM VIỆC, lấy từ mục 9 và/hoặc mục 10. Ghi ĐÚNG như họ viết, không tự thêm chữ "Công ty". Có thể là công ty, ngân hàng, nhà hàng, quán, trường, bệnh viện, khu chế xuất (KCX), khu công nghiệp (KCN)... Bỏ phần chức danh đứng trước (vd "Công nhân", "nhân viên", "làm việc tại"), giữ tên nơi làm việc (vd "Công nhân cty Tiến Quang" -> "Cty Tiến Quang" viết lại thành "Công ty Tiến Quang"; "NV ngân hàng Vietcombank" -> "Ngân hàng Vietcombank"; "KCX Tân Thuận" giữ nguyên). Chỉ đổi "cty/ty" thành "Công ty" khi họ viết vậy; viết tắt KCX/KCN giữ nguyên. KHÔNG ghi địa chỉ đường/phường; để "" nếu không có',
+    '- noi_o: mục 8 "Nơi ở hiện tại" (gồm dòng địa chỉ chính và dòng "Xã/phường"): ghép thành 1 địa chỉ đầy đủ theo thứ tự nhỏ -> lớn, ngăn cách bằng dấu phẩy (vd "113/40C, đường số 11, phường Linh Xuân, TP. Hồ Chí Minh"). Ghi ĐÚNG như họ viết, giữ số nhà/hẻm/khu phố/tổ; chỉ đổi viết tắt thông dụng cho rõ nghĩa (P. -> phường, Q. -> quận, TP.HCM -> TP. Hồ Chí Minh) khi chắc chắn; không tự bịa phần họ không viết; để "" nếu bỏ trống',
     '- khong_chac: mảng tên các trường ở trên mà chữ viết tay khó đọc, bạn không chắc chắn (vd ["cccd","ho_ten"]), mảng rỗng nếu chắc chắn hết',
     'Nếu mục nào bỏ trống thì để chuỗi rỗng "". Không thêm chữ giải thích, không markdown.'
   ].join('\n');
@@ -464,7 +465,7 @@ function applyResult(p, r) {
   }
   p.data = {
     ho_ten: r.ho_ten || '', gioi_tinh: r.gioi_tinh || '', ngay_sinh: r.ngay_sinh || '', dan_toc: r.dan_toc || '',
-    cccd: cccdFromAi(r), nghe_nghiep: r.nghe_nghiep || '', cong_ty: r.cong_ty || ''
+    cccd: cccdFromAi(r), nghe_nghiep: r.nghe_nghiep || '', cong_ty: r.cong_ty || '', noi_o: r.noi_o || ''
   };
   p.aiUnsure = Array.isArray(r.khong_chac) ? r.khong_chac : [];
   normalizeData(p.data);
@@ -602,6 +603,7 @@ function normalizeData(d) {
   d.dan_toc = d.dan_toc.charAt(0).toUpperCase() + d.dan_toc.slice(1).toLowerCase();
   d.cccd = String(d.cccd || '').replace(/[\s.\-]/g, '');
   d.nghe_nghiep = String(d.nghe_nghiep || '').replace(/\s+/g, ' ').trim();
+  d.noi_o = String(d.noi_o || '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
   d.cong_ty = String(d.cong_ty || '').replace(/\s+/g, ' ').trim().replace(/^(c\.?\s?ty|cty\.?)\s+/i, 'Công ty ');
 }
 
@@ -658,7 +660,7 @@ function dupCounts() {
 // ============================================================
 // HIỂN THỊ — gom nhiều lần gọi render() liền nhau thành 1 lần vẽ (tránh giật khi tách 100 trang)
 // ============================================================
-var FIELD_ORDER = ['ho_ten', 'gioi_tinh', 'ngay_sinh', 'dan_toc', 'cccd', 'nghe_nghiep', 'cong_ty'];
+var FIELD_ORDER = ['ho_ten', 'gioi_tinh', 'ngay_sinh', 'dan_toc', 'cccd', 'nghe_nghiep', 'cong_ty', 'noi_o'];
 var renderQueued = false;
 function render() {
   if (renderQueued) return;
@@ -694,10 +696,10 @@ function renderNow() {
       var label = p.status === 'processing' ? (p.mode === 'cccd' ? '🔍 AI đang đọc lại kỹ CCCD (ảnh phóng to)...' : '⏳ AI đang đọc...')
         : (PAUSED ? '⏸ Đã tạm dừng'
           : (p.mode === 'cccd' && !p.attempts ? '🔍 CCCD nghi sai — chờ đọc lại kỹ' : p.attempts > 0 ? '↻ Lỗi tạm thời, tự thử lại lần ' + (p.attempts + 1) + '/' + MAX_ATTEMPTS + (p.retryAt > now ? ' sau ~' + Math.ceil((p.retryAt - now) / 1000) + 's' : '') : '… đang chờ lượt'));
-      html += '<td colspan="7" style="color:var(--muted);">' + label + (p.attempts > 0 && p.errorMsg ? '<div class="src" style="white-space:normal;">' + esc(p.errorMsg) + '</div>' : '') + '</td><td></td>';
+      html += '<td colspan="8" style="color:var(--muted);">' + label + (p.attempts > 0 && p.errorMsg ? '<div class="src" style="white-space:normal;">' + esc(p.errorMsg) + '</div>' : '') + '</td><td></td>';
       html += '<td><div class="row-actions">' + (p.status === 'queued' ? del : '') + '</div></td>';
     } else if (p.status === 'error') {
-      html += '<td colspan="7" style="color:#a50e0e;font-size:12px;">Lỗi sau ' + p.attempts + ' lần thử: ' + esc(p.errorMsg) + '</td><td></td>';
+      html += '<td colspan="8" style="color:#a50e0e;font-size:12px;">Lỗi sau ' + p.attempts + ' lần thử: ' + esc(p.errorMsg) + '</td><td></td>';
       html += '<td><div class="row-actions">' + retry + del + '</div></td>';
     } else {
       FIELD_ORDER.forEach(function (f) {
@@ -705,7 +707,7 @@ function renderNow() {
         if (f === 'gioi_tinh') {
           html += '<td><select data-f="' + f + '" class="' + b + '">' + ['', 'Nam', 'Nữ'].map(function (o) { return '<option' + (p.data[f] === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select></td>';
         } else {
-          html += '<td><input data-f="' + f + '" class="' + b + '" value="' + esc(p.data[f]) + '"></td>';
+          html += '<td><input data-f="' + f + '" class="' + b + '" value="' + esc(p.data[f] || '') + '"></td>';
         }
       });
       html += '<td class="flags' + (v.flags.length ? '' : ' ok') + '">' + (v.flags.length ? esc(v.flags.join(' · ')) : '✓ Ổn') +
@@ -826,7 +828,7 @@ document.addEventListener('keydown', function (e) {
 // XUẤT EXCEL — cột cố định; CCCD & ngày sinh ghi dạng CHỮ để Excel không làm mất số 0 đầu
 // hoặc tự đổi ngày sang kiểu khác.
 // ============================================================
-var EXPORT_HEADERS = ['STT', 'Họ và tên', 'Giới tính', 'Ngày sinh', 'Dân tộc', 'Số CCCD', 'Nghề nghiệp', 'Nơi làm việc', 'Ghi chú kiểm tra', 'Nguồn (file - trang)'];
+var EXPORT_HEADERS = ['STT', 'Họ và tên', 'Giới tính', 'Ngày sinh', 'Dân tộc', 'Số CCCD', 'Nghề nghiệp', 'Nơi làm việc', 'Nơi ở hiện tại', 'Ghi chú kiểm tra', 'Nguồn (file - trang)'];
 
 document.getElementById('btnExport').addEventListener('click', function () {
   if (typeof XLSX === 'undefined') { toast('Chưa tải được thư viện Excel — kiểm tra mạng rồi tải lại trang (dữ liệu vẫn được giữ).', 6000); return; }
@@ -837,7 +839,7 @@ document.getElementById('btnExport').addEventListener('click', function () {
     if (p.status !== 'done') return;
     var v = validate(p, dups);
     var d = p.data;
-    rows.push([++stt, d.ho_ten, d.gioi_tinh, d.ngay_sinh, d.dan_toc, d.cccd, d.nghe_nghiep, d.cong_ty, v.flags.concat(p.note ? [p.note] : []).join('; '), p.source]);
+    rows.push([++stt, d.ho_ten, d.gioi_tinh, d.ngay_sinh, d.dan_toc, d.cccd, d.nghe_nghiep, d.cong_ty, d.noi_o || '', v.flags.concat(p.note ? [p.note] : []).join('; '), p.source]);
   });
   var ws = XLSX.utils.aoa_to_sheet(rows);
   for (var r = 1; r < rows.length; r++) {
@@ -846,7 +848,7 @@ document.getElementById('btnExport').addEventListener('click', function () {
       if (cell) { cell.t = 's'; cell.v = String(cell.v); cell.z = '@'; }
     });
   }
-  ws['!cols'] = [{ wch: 5 }, { wch: 26 }, { wch: 8 }, { wch: 12 }, { wch: 9 }, { wch: 15 }, { wch: 16 }, { wch: 30 }, { wch: 40 }, { wch: 30 }];
+  ws['!cols'] = [{ wch: 5 }, { wch: 26 }, { wch: 8 }, { wch: 12 }, { wch: 9 }, { wch: 15 }, { wch: 16 }, { wch: 30 }, { wch: 45 }, { wch: 40 }, { wch: 30 }];
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'CongNhan');
   var t = new Date(), pad = function (n) { return ('0' + n).slice(-2); };
