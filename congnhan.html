@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nhập liệu phiếu công nhân - thêm địa chỉ</title>
+<title>Nhập liệu phiếu công nhân</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -17,7 +17,7 @@
   header{background:var(--brand);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
   header h1{font-size:18px;margin:0;font-weight:600;}
   header button{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;}
-  main{max-width:1400px;margin:0 auto;padding:16px;}
+  main{max-width:none;margin:0 auto;padding:16px;}
   .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
   .dropzone{border:2px dashed var(--border);border-radius:10px;padding:28px;text-align:center;color:var(--muted);cursor:pointer;}
   .dropzone.drag{border-color:var(--brand);background:#f0f6ff;}
@@ -55,7 +55,8 @@
   .thumb-empty{width:46px;height:60px;border:1px dashed var(--border);border-radius:4px;font-size:9px;color:var(--muted);display:flex;align-items:center;justify-content:center;text-align:center;}
   .flags{font-size:11px;color:#a5530a;line-height:1.35;min-width:150px;}
   .flags.ok{color:#1e7e34;}
-  .src{font-size:11px;color:var(--muted);white-space:nowrap;}
+  .src{font-size:11px;color:var(--muted);white-space:nowrap;max-width:54px;overflow:hidden;text-overflow:ellipsis;}
+  th:first-child,td:first-child{width:56px;max-width:56px;padding-left:4px;padding-right:4px;}
   .settings{display:none;margin-top:12px;gap:12px;grid-template-columns:2fr 1fr 1fr 1fr;}
   .settings.show{display:grid;}
   .settings label{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:3px;}
@@ -123,9 +124,9 @@
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>#</th><th>Ảnh</th><th style="min-width:180px;">Họ và tên</th><th style="min-width:72px;">Giới tính</th>
-          <th style="min-width:105px;">Ngày sinh</th><th style="min-width:80px;">Dân tộc</th><th style="min-width:130px;">Số CCCD</th>
-          <th style="min-width:130px;">Nghề nghiệp</th><th style="min-width:170px;">Nơi làm việc</th><th style="min-width:260px;">Nơi ở hiện tại</th><th>Kiểm tra</th><th></th>
+          <th>#</th><th>Ảnh</th><th style="min-width:210px;">Họ và tên</th><th style="min-width:62px;">Giới tính</th>
+          <th style="min-width:98px;">Ngày sinh</th><th style="min-width:62px;">Dân tộc</th><th style="min-width:130px;">Số CCCD</th>
+          <th style="min-width:130px;">Nghề nghiệp</th><th style="min-width:240px;">Nơi làm việc</th><th style="min-width:340px;">Nơi ở hiện tại</th><th style="min-width:170px;">Kiểm tra</th><th></th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -690,7 +691,7 @@ function renderNow() {
     var del = '<button class="btn btn-sm btn-del" data-del="' + p.id + '" title="Xoá dòng này (vd phiếu chụp 2 lần)">🗑</button>';
     var retry = '<button class="btn btn-sm btn-secondary" data-retry="' + p.id + '" title="Đọc lại trang này">↻</button>';
     html += '<tr class="' + cls + '" data-id="' + p.id + '">';
-    html += '<td>' + (idx + 1) + '<div class="src">' + esc(p.source) + '</div></td>';
+    html += '<td>' + (idx + 1) + '<div class="src" title="' + esc(p.source) + '">' + esc(String(p.source || '').replace(/^.*[—-]\s*/, '')) + '</div></td>';
     html += '<td>' + (p.thumb ? '<img class="thumb" src="' + p.thumb + '" data-view="' + p.id + '">' : '<div class="thumb-empty">không có<br>ảnh</div>') + '</td>';
     if (p.status === 'queued' || p.status === 'processing') {
       var label = p.status === 'processing' ? (p.mode === 'cccd' ? '🔍 AI đang đọc lại kỹ CCCD (ảnh phóng to)...' : '⏳ AI đang đọc...')
