@@ -314,6 +314,7 @@ function buildPrompt(n) {
     '- ngay_sinh: mục 3, dạng dd/MM/yyyy (vd "01.8.1998" -> "01/08/1998")',
     '- dan_toc: mục 4 (vd "Kinh"), để "" nếu bỏ trống',
     '- cccd_tung_o: mục 6 (Số CCCD) — mảng ĐÚNG 12 phần tử, mỗi phần tử là 1 chữ số đọc trong ĐÚNG 1 ô vuông, theo thứ tự từ trái sang phải (vd ["0","5","2","1","9","8","0","0","1","6","1","5"]). Đọc chậm, từng ô một. Ô nào không đọc được thì ghi "?". Không thêm bớt ô, không đoán số theo nơi ở/nơi làm việc.',
+    '  CÁCH VIẾT SỐ KHÁC NHAU: (a) phần lớn viết mỗi chữ số vào 1 ô vuông; (b) một số người viết cả dãy số Ở PHÍA TRÊN các ô vuông (trên dòng chấm chấm), các ô vuông bên dưới để TRỐNG. Nếu ô vuông trống mà có dãy số viết phía trên thì đọc dãy số đó từ trái sang phải, bỏ qua việc chữ số có thẳng hàng với ô nào hay không (chữ số thường lệch, chỗ sát chỗ thưa). Dãy số vẫn phải đủ 12 chữ số; nếu đếm ra không đủ 12 thì nhìn lại, chữ nào không rõ ghi "?". Nếu vừa có số trong ô vừa có số phía trên (viết đè/sửa) thì ưu tiên số trong ô, hoặc số viết rõ hơn.',
     '  Lưu ý chữ số viết tay hay nhầm: 1↔7, 0↔6, 3↔8, 5↔6, 4↔9, 2↔7 — nhìn kỹ nét móc/nét gạch ngang của từng số.',
     '  Tự kiểm tra sau khi đọc: số thứ 4 cho biết giới tính + thế kỷ sinh (0 = Nam sinh 19xx, 1 = Nữ sinh 19xx, 2 = Nam sinh 20xx, 3 = Nữ sinh 20xx); số thứ 5-6 là 2 số cuối năm sinh; 3 số đầu là mã tỉnh (luôn bắt đầu bằng 0). Đối chiếu với mục 2 và mục 3 bạn vừa đọc. Nếu KHÔNG khớp, nhìn lại thật kỹ đúng các ô đó trên ảnh. TUYỆT ĐỐI KHÔNG sửa số chỉ để cho khớp — nếu nét chữ thực tế vẫn như vậy thì ghi đúng nét chữ và đưa "cccd" vào khong_chac.',
     '- nghe_nghiep: mục 9, phần NGHỀ (vd "Công nhân"), bỏ phần tên công ty',
@@ -516,6 +517,7 @@ function buildRereadPrompt() {
     '- gioi_tinh: mục 2, ô được đánh dấu: "Nam" hoặc "Nữ"',
     '- ngay_sinh: mục 3, dạng dd/MM/yyyy',
     '- cccd_tung_o: mục 6 (Số CCCD) — mảng ĐÚNG 12 phần tử, mỗi phần tử là chữ số trong ĐÚNG 1 ô vuông, đếm ô từ trái sang phải. Đọc thật chậm từng ô. Ô không đọc được ghi "?".',
+    'Lưu ý: có người viết dãy số PHÍA TRÊN các ô vuông (ô vuông để trống) — khi đó đọc dãy số viết phía trên từ trái sang phải, không cần thẳng hàng với ô, vẫn đủ 12 chữ số.',
     'Chữ số viết tay hay nhầm: 1↔7, 0↔6, 3↔8, 5↔6, 4↔9, 2↔7 — nhìn kỹ nét móc, nét gạch ngang, nét cong khép kín hay hở.',
     'Quy tắc CCCD để tự soát: 3 số đầu là mã tỉnh (bắt đầu bằng 0); số thứ 4: 0 = Nam sinh 19xx, 1 = Nữ sinh 19xx, 2 = Nam sinh 20xx, 3 = Nữ sinh 20xx; số thứ 5-6 = 2 số cuối năm sinh. Nếu không khớp với giới tính/ngày sinh, nhìn lại thật kỹ cả 3 mục. TUYỆT ĐỐI KHÔNG sửa số chỉ để cho khớp — chữ thực tế thế nào ghi đúng thế ấy.',
     '- khong_chac: mảng tên các mục ở trên vẫn không chắc chắn (vd ["cccd"]), mảng rỗng nếu chắc chắn.'
